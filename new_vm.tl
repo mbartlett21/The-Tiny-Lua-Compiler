@@ -77,6 +77,7 @@ local record VirtualMachine
   simple_newuserdata: function(self): LuaUdata
   lua_error: function(self, err: any)
   -- simple_newclosure: function(self, run: ExtFnType, values: table.PackTable<LuaValue>): LuaExtFunc
+  simple_loadbuffer: function(self, code: string, name: string): LuaVmFunc
   -- simple_newfunction: function(self, run: ExtFnType): LuaExtFunc
 
   -- simple_rawget: function(self, tbl: LuaValue, k: LuaValue): LuaValue
@@ -279,6 +280,7 @@ function VirtualMachine:setClosure(closure: Closure): Closure
 end
 
 function VirtualMachine:simple_getmetatable(tbl: LuaValue): LuaTable
+  -- print(tbl, type(tbl), self.globalSetup.metatables[type(tbl)])
   if tbl is LuaTable then
     return tbl.metatable
   elseif tbl is LuaUdata then
@@ -355,7 +357,9 @@ function VirtualMachine:simple_settable(tbl: LuaValue, k: LuaValue, v: LuaValue)
   elseif istbl then
     (tbl as LuaTable).values[k] = v
   else
-    self:lua_error("attempt to index a non-table value")
+    self:lua_error("attempt to set-index a non-table value: " .. tostring(tbl)
+      .. ' with key ' .. tostring(k)
+      .. ' and value ' .. tostring(v))
   end
 end
 
@@ -543,7 +547,7 @@ function VirtualMachine:simple_call(a: LuaValue, b: table.PackTable<LuaValue>): 
     if meta then
       return self:simple_call(meta, table.pack(a, table.unpack(b, 1, b.n)))
     end
-    self:lua_error("attempt to call a non-function value")
+    self:lua_error("attempt to call a non-function value: " .. tostring(a))
   end
 end
 
@@ -560,7 +564,7 @@ function VirtualMachine:internal_tailcall(a: LuaValue, b: table.PackTable<LuaVal
     if meta then
       return self:internal_tailcall(meta, table.pack(a, table.unpack(b, 1, b.n)))
     end
-    self:lua_error("attempt to call a non-function value")
+    self:lua_error("attempt to tailcall a non-function value: " .. tostring(a))
   end
 end
 
@@ -579,9 +583,28 @@ function VirtualMachine:simple_newuserdata(): LuaUdata
   }
 end
 
+function VirtualMachine:simple_loadbuffer(buf: string, _name: string): LuaVmFunc
+  local tokens    = tlc.Tokenizer.new(buf):tokenize()
+  local ast       = tlc.Parser.new(tokens):parse()
+  local proto     = tlc.CodeGenerator.new(ast):generate()
+
+  local tClosure: Closure = {
+    nupvalues = 0,
+    env       = self.globalSetup._G,
+    proto     = proto,
+    upvalues  = {},
+  }
+
+  return {
+    kind = 'VmFunc',
+    closure = tClosure,
+  }
+end
+
 function VirtualMachine:lua_error(err: any)
   -- todo: do better error handling with pcall etc.
-  error(err)
+  -- print(self.closure.proto.functionName)
+  error(err, 2)
 end
 
 local function do_number(v: LuaValue): number
@@ -591,7 +614,7 @@ local function do_number(v: LuaValue): number
   if v is number then
     return v
   end
-  error("Exspected number")
+  error("Expected number")
 end
 
 local function unpacklvalue(v: LuaValue): any
@@ -625,6 +648,7 @@ end
 --// Execution //--
 function VirtualMachine:executeClosure(params: table.PackTable<LuaValue>): table.PackTable<LuaValue>
   -- Optimization: localize fields.
+  -- print('>>>' .. self.closure.proto.functionName)
   local closure   = self.closure
   local stack: {LuaValue}     = {}
   local env       = closure.env

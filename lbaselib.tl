@@ -1,8 +1,8 @@
 local VirtualMachine = require'new_vm'
 
--- local type LuaExtFunc = VirtualMachine.LuaExtFunc
+local type LuaExtFunc = VirtualMachine.LuaExtFunc
 local type LuaExtFuncSimple = VirtualMachine.LuaExtFuncSimple
--- local type LuaVmFunc = VirtualMachine.LuaVmFunc
+local type LuaVmFunc = VirtualMachine.LuaVmFunc
 local type LuaTable = VirtualMachine.LuaTable
 local type LuaValue = VirtualMachine.LuaValue
 
@@ -161,6 +161,59 @@ function lbaselib.select(vm: VirtualMachine, args: table.PackTable<LuaValue>): t
    end
 end
 
+function lbaselib.loadstring(vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
+   local str = tostring(args[1])
+   local name = args[2] and tostring(args[2]) or "?"
+
+   local fn = assert(vm:simple_loadbuffer(str, name))
+
+   return { n = 1, fn }
+end
+
+function lbaselib.setmetatable(vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
+   local tbl = args[1]
+   local metat = args[2]
+   if tbl is LuaTable and metat is LuaTable and not vm:simple_luaL_getmetafield(tbl, "__metatable") then
+      vm:simple_setmetatable(tbl, metat)
+   else
+      vm:lua_error("cannot set metatable")
+   end
+   return { n = 1, tbl }
+end
+
+function lbaselib.unpack(vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
+   local tbl = args[1]
+   local i = math.tointeger(args[2] or 1)
+   local e = math.tointeger(args[3] or #tbl)
+   if tbl is LuaTable then
+      local stack: table.PackTable<LuaValue> = { n = e - i + 1 }
+      for n = i, e do
+         stack[n - i + 1] = tbl.values[n]
+      end
+      return stack
+   end
+   vm:lua_error("cannot unpack non-table value")
+end
+
+function lbaselib.type(vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
+   local v = args[1]
+   if v is LuaTable then
+      return { n = 1, "table" }
+   elseif v is LuaVmFunc or v is LuaExtFunc or v is LuaExtFuncSimple then
+      return { n = 1, "function" }
+   elseif v is number then
+      return { n = 1, "number" }
+   elseif v is boolean then
+      return { n = 1, "boolean" }
+   elseif v is string then
+      return { n = 1, "string" }
+   elseif v is nil then
+      return { n = 1, "nil" }
+   else
+      error("invalid value: " .. tostring(v))
+   end
+end
+
 -- function lbaselib.loadfile(vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
 --    local s = vm:luaL_checklstring(1)
 --    local chunkname = vm:luaL_optstring(2)
@@ -179,6 +232,10 @@ function lbaselib.open(vm: VirtualMachine)
    globals.values.tonumber = extfuncsimple(lbaselib.tonumber)
    globals.values.error = extfuncsimple(lbaselib.error)
    globals.values.select = extfuncsimple(lbaselib.select)
+   globals.values.loadstring = extfuncsimple(lbaselib.loadstring)
+   globals.values.setmetatable = extfuncsimple(lbaselib.setmetatable)
+   globals.values.unpack = extfuncsimple(lbaselib.unpack)
+   globals.values.type = extfuncsimple(lbaselib.type)
    globals.values._G = globals
    -- globals.values.loadfile = extfuncsimple(lbaselib.loadfile)
 end
