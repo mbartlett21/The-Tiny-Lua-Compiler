@@ -1,3 +1,4 @@
+#!/usr/bin/lua
 --* Dependencies *--
 local tlc = require("tlc")
 
@@ -172,9 +173,7 @@ function TLCTest:compileAndRun(code)
   local proto     = tlc.CodeGenerator.new(ast):generate()
 
   local vm = require'new_vm'.new()
-  require'lbaselib'.open(vm)
-  require'liolib'.open(vm)
-  require'lstrlib'.open(vm)
+  require'lualibs'.open(vm)
 
   local res = vm:execute(proto)
   -- local bytecode  = tlc.BytecodeEmitter.new(proto):emit()

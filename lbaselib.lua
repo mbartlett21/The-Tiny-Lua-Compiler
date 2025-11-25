@@ -36,12 +36,6 @@ local lbaselib = {}
 
 
 
-
-
-
-
-
-
 function lbaselib.ipairsaux(vm, args)
    local int = assert(math.tointeger(args[2]))
    local v2 = int + 1
@@ -62,10 +56,10 @@ end
 function lbaselib.ipairs(_vm, args)
    return {
       n = 3,
-      { kind = 'ExtFuncSimple', run = lbaselib.ipairsaux,
-
-
-      }, args[1], 0, }
+      { kind = 'ExtFuncSimple', run = lbaselib.ipairsaux },
+      args[1],
+      0,
+   }
 end
 
 function lbaselib.next(vm, args)
@@ -91,10 +85,10 @@ function lbaselib.pairs(vm, args)
    else
       return {
          n = 3,
-         { kind = 'ExtFuncSimple', run = lbaselib.next,
-
-
-         }, args[1], } end
+         { kind = 'ExtFuncSimple', run = lbaselib.next },
+         args[1],
+      }
+   end
 end
 
 function lbaselib.assert(vm, args)
@@ -184,8 +178,8 @@ end
 function lbaselib.unpack(vm, args)
    local tbl = args[1]
    local i = math.tointeger(args[2] or 1)
-   local e = math.tointeger(args[3] or #tbl)
    if VirtualMachine.is_table(tbl) then
+      local e = math.tointeger(args[3] or #(tbl.values))
       local stack = { n = e - i + 1 }
       for n = i, e do
          stack[n - i + 1] = tbl.values[n]
@@ -195,7 +189,7 @@ function lbaselib.unpack(vm, args)
    vm:lua_error("cannot unpack non-table value")
 end
 
-function lbaselib.type(vm, args)
+function lbaselib.type(_vm, args)
    local v = args[1]
    if VirtualMachine.is_table(v) then
       return { n = 1, "table" }
@@ -224,40 +218,23 @@ end
 function lbaselib.open(vm)
    local globals = vm.globalSetup._G
 
-   globals.values.assert = { kind = 'ExtFuncSimple', run = lbaselib.assert,
+   globals.values.assert = { kind = 'ExtFuncSimple', run = lbaselib.assert }
+   globals.values.ipairs = { kind = 'ExtFuncSimple', run = lbaselib.ipairs }
+   globals.values.pairs = { kind = 'ExtFuncSimple', run = lbaselib.pairs }
+   globals.values.next = { kind = 'ExtFuncSimple', run = lbaselib.next }
+   globals.values.print = { kind = 'ExtFuncSimple', run = lbaselib.print }
+   globals.values.tonumber = { kind = 'ExtFuncSimple', run = lbaselib.tonumber }
+   globals.values.error = { kind = 'ExtFuncSimple', run = lbaselib.error }
+   globals.values.select = { kind = 'ExtFuncSimple', run = lbaselib.select }
+   globals.values.loadstring = { kind = 'ExtFuncSimple', run = lbaselib.loadstring }
+   globals.values.setmetatable = { kind = 'ExtFuncSimple', run = lbaselib.setmetatable }
+   globals.values.unpack = { kind = 'ExtFuncSimple', run = lbaselib.unpack }
+   globals.values.type = { kind = 'ExtFuncSimple', run = lbaselib.type }
+   globals.values._G = globals
+
+   vm.globalSetup.packages.values._G = globals
 
 
-   }; globals.values.ipairs = { kind = 'ExtFuncSimple', run = lbaselib.ipairs,
+end
 
-
-   }; globals.values.pairs = { kind = 'ExtFuncSimple', run = lbaselib.pairs,
-
-
-   }; globals.values.next = { kind = 'ExtFuncSimple', run = lbaselib.next,
-
-
-   }; globals.values.print = { kind = 'ExtFuncSimple', run = lbaselib.print,
-
-
-   }; globals.values.tonumber = { kind = 'ExtFuncSimple', run = lbaselib.tonumber,
-
-
-   }; globals.values.error = { kind = 'ExtFuncSimple', run = lbaselib.error,
-
-
-   }; globals.values.select = { kind = 'ExtFuncSimple', run = lbaselib.select,
-
-
-   }; globals.values.loadstring = { kind = 'ExtFuncSimple', run = lbaselib.loadstring,
-
-
-   }; globals.values.setmetatable = { kind = 'ExtFuncSimple', run = lbaselib.setmetatable,
-
-
-   }; globals.values.unpack = { kind = 'ExtFuncSimple', run = lbaselib.unpack,
-
-
-   }; globals.values.type = { kind = 'ExtFuncSimple', run = lbaselib.type,
-
-
-   }; globals.values._G = globals end; return lbaselib
+return lbaselib

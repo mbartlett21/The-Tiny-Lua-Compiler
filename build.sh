@@ -8,4 +8,4 @@ for item in ./*.tl; do
 done
 
 echo "Generating $items"
-tl gen $items
+tl gen -c $items || exit 1

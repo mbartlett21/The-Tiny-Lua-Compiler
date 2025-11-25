@@ -77,7 +77,7 @@ local record VirtualMachine
   simple_newuserdata: function(self): LuaUdata
   lua_error: function(self, err: any)
   -- simple_newclosure: function(self, run: ExtFnType, values: table.PackTable<LuaValue>): LuaExtFunc
-  simple_loadbuffer: function(self, code: string, name: string): LuaVmFunc
+  simple_loadbuffer: function(self, code: string, name ?: string): LuaVmFunc
   -- simple_newfunction: function(self, run: ExtFnType): LuaExtFunc
 
   -- simple_rawget: function(self, tbl: LuaValue, k: LuaValue): LuaValue
@@ -604,7 +604,7 @@ end
 function VirtualMachine:lua_error(err: any)
   -- todo: do better error handling with pcall etc.
   -- print(self.closure.proto.functionName)
-  error(err, 2)
+  error("lualua error: " .. tostring(err), 2)
 end
 
 local function do_number(v: LuaValue): number

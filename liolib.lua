@@ -39,12 +39,6 @@ local liolib = {}
 
 
 
-
-
-
-
-
-
 function liolib.openf(vm, args)
    local ret = _tl_table_pack((io.open)(_tl_table_unpack(args, 1, args.n)))
    if ret[1] then
@@ -72,16 +66,16 @@ function liolib.open(vm)
    local globals = vm.globalSetup._G
 
    local io2 = vm:simple_newtable()
-   io2.values.open = { kind = 'ExtFuncSimple', run = liolib.openf,
+   io2.values.open = { kind = 'ExtFuncSimple', run = liolib.openf }
 
-
-   }; local meta_tbl = vm:simple_luaL_newmetatable(LUA_FILEHANDLE); local idxtbl = vm:simple_newtable()
+   local meta_tbl = vm:simple_luaL_newmetatable(LUA_FILEHANDLE)
+   local idxtbl = vm:simple_newtable()
    meta_tbl.values.__index = idxtbl
 
-   idxtbl.values.read = { kind = 'ExtFuncSimple', run = liolib.file_read,
+   idxtbl.values.read = { kind = 'ExtFuncSimple', run = liolib.file_read }
 
-
-   }; globals.values.io = io2; vm.globalSetup.packages.values.io = io2
+   globals.values.io = io2
+   vm.globalSetup.packages.values.io = io2
 end
 
 return liolib

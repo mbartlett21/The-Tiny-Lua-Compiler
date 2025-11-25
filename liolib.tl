@@ -17,10 +17,7 @@ local record liolib
 end
 
 -- local macroexp extfunc(fn: function(VirtualMachine, table.PackTable<LuaValue>): table.PackTable<LuaValue>): LuaExtFunc
---    return {
---       kind = 'ExtFunc',
---       run = fn,
---    }
+--    return { kind = 'ExtFunc', run = fn }
 -- end
 
 -- local function wrap_simplef(fn: function(vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>): function(VirtualMachine): integer
@@ -39,10 +36,7 @@ end
 -- end
 
 local macroexp extfuncsimple(fn: function(VirtualMachine, table.PackTable<LuaValue>): table.PackTable<LuaValue>): LuaExtFuncSimple
-   return {
-      kind = 'ExtFuncSimple',
-      run = fn,
-   }
+   return { kind = 'ExtFuncSimple', run = fn }
 end
 
 function liolib.openf(vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>

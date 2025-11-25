@@ -10,15 +10,7 @@ local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 th
 
 
 
-local LUA_FILEHANDLE = "FILE*"
-
 local lstrlib = {}
-
-
-
-
-
-
 
 
 
@@ -53,10 +45,10 @@ function lstrlib.gmatch(_vm, args)
    local fn = string.gmatch(str, pat, init)
    return {
       n = 1,
-      { kind = 'ExtFuncSimple', run = function(vm, _inner)
+      { kind = 'ExtFuncSimple', run = function(_vm, _inner)
          return _tl_table_pack(fn())
-      end,
-      }, }
+      end },
+   }
 end
 
 function lstrlib.match(_vm, args)
@@ -88,17 +80,17 @@ function lstrlib.open(vm)
    local globals = vm.globalSetup._G
 
    local string2 = vm:simple_newtable()
-   string2.values.gmatch = { kind = 'ExtFuncSimple', run = lstrlib.gmatch,
+   string2.values.gmatch = { kind = 'ExtFuncSimple', run = lstrlib.gmatch }
+   string2.values.match = { kind = 'ExtFuncSimple', run = lstrlib.match }
+   string2.values.char = { kind = 'ExtFuncSimple', run = lstrlib.char }
+   string2.values.sub = { kind = 'ExtFuncSimple', run = lstrlib.sub }
 
+   local meta_tbl = vm:simple_newtable()
+   meta_tbl.values.__index = string2
 
-   }; string2.values.match = { kind = 'ExtFuncSimple', run = lstrlib.match,
+   globals.values.string = string2
+   vm.globalSetup.packages.values.string = string2
+   vm.globalSetup.metatables.string = meta_tbl
+end
 
-
-   }; string2.values.char = { kind = 'ExtFuncSimple', run = lstrlib.char,
-
-
-   }; string2.values.sub = { kind = 'ExtFuncSimple', run = lstrlib.sub,
-
-
-   }; local meta_tbl = vm:simple_newtable(); meta_tbl.values.__index = string2; globals.values.string = string2; vm.globalSetup.packages.values.string = string2; vm.globalSetup.metatables.string = meta_tbl end
 return lstrlib

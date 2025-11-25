@@ -14,10 +14,7 @@ local record lbaselib
 end
 
 -- local macroexp extfunc(fn: function(VirtualMachine, table.PackTable<LuaValue>): table.PackTable<LuaValue>): LuaExtFunc
---    return {
---       kind = 'ExtFunc',
---       run = fn,
---    }
+--    return { kind = 'ExtFunc', run = fn }
 -- end
 
 -- local function wrap_simplef(fn: function(vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>): function(VirtualMachine): integer
@@ -36,10 +33,7 @@ end
 -- end
 
 local macroexp extfuncsimple(fn: function(VirtualMachine, table.PackTable<LuaValue>): table.PackTable<LuaValue>): LuaExtFuncSimple
-   return {
-      kind = 'ExtFuncSimple',
-      run = fn,
-   }
+   return { kind = 'ExtFuncSimple', run = fn }
 end
 
 function lbaselib.ipairsaux(vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
@@ -184,8 +178,8 @@ end
 function lbaselib.unpack(vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
    local tbl = args[1]
    local i = math.tointeger(args[2] or 1)
-   local e = math.tointeger(args[3] or #tbl)
    if tbl is LuaTable then
+      local e = math.tointeger(args[3] or #(tbl.values as {any}))
       local stack: table.PackTable<LuaValue> = { n = e - i + 1 }
       for n = i, e do
          stack[n - i + 1] = tbl.values[n]
@@ -195,7 +189,7 @@ function lbaselib.unpack(vm: VirtualMachine, args: table.PackTable<LuaValue>): t
    vm:lua_error("cannot unpack non-table value")
 end
 
-function lbaselib.type(vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
+function lbaselib.type(_vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
    local v = args[1]
    if v is LuaTable then
       return { n = 1, "table" }
@@ -237,6 +231,9 @@ function lbaselib.open(vm: VirtualMachine)
    globals.values.unpack = extfuncsimple(lbaselib.unpack)
    globals.values.type = extfuncsimple(lbaselib.type)
    globals.values._G = globals
+
+   vm.globalSetup.packages.values._G = globals
+
    -- globals.values.loadfile = extfuncsimple(lbaselib.loadfile)
 end
 

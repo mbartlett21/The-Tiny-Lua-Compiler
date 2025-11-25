@@ -604,7 +604,7 @@ end
 function VirtualMachine:lua_error(err)
 
 
-   error(err, 2)
+   error("lualua error: " .. tostring(err), 2)
 end
 
 local function do_number(v)
