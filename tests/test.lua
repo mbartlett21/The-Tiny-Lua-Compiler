@@ -174,6 +174,7 @@ function TLCTest:compileAndRun(code)
   local vm = require'new_vm'.new()
   require'lbaselib'.open(vm)
   require'liolib'.open(vm)
+  require'lstrlib'.open(vm)
 
   local res = vm:execute(proto)
   -- local bytecode  = tlc.BytecodeEmitter.new(proto):emit()
@@ -843,7 +844,7 @@ suite:describe("Complex General Tests", function()
       local tokens   = tlc.Tokenizer.new(code):tokenize()
       local ast      = tlc.Parser.new(tokens):parse()
       local proto    = tlc.CodeGenerator.new(ast):generate()
-      return tlc.VirtualMachine.new(proto):execute()
+      return tlc.VirtualMachine.new(proto):execute()[1]
       --local bytecode = tlc.BytecodeEmitter.new(proto):emit()
 
       --local func = loadstring(bytecode)
@@ -853,9 +854,9 @@ suite:describe("Complex General Tests", function()
 
     -- Inject the test suite into the global scope for
     -- access within the test code.
-    _G.suite = suite
+    -- _G.suite = suite
     suite:assertEqual(suite:compileAndRun(testCode), 30)
-    _G.suite = nil
+    -- _G.suite = nil
   end)
 end)
 
