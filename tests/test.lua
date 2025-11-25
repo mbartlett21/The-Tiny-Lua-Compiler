@@ -173,6 +173,7 @@ function TLCTest:compileAndRun(code)
 
   local vm = require'new_vm'.new()
   require'lbaselib'.open(vm)
+  require'liolib'.open(vm)
 
   local res = vm:execute(proto)
   -- local bytecode  = tlc.BytecodeEmitter.new(proto):emit()
@@ -830,30 +831,32 @@ suite:describe("Complex General Tests", function()
     ]])
   end)
 
-  -- suite:it("Self-compilation", function()
-  --   -- NOTE: This test might take a while to run.
-  --   local testCode = [[
-  --     local tlcSource = io.open("the-tiny-lua-compiler.lua"):read("*a")
+  suite:it("Self-compilation", function()
+    -- NOTE: This test might take a while to run.
+    local testCode = [[
+      local tlcSource = io.open("the-tiny-lua-compiler.lua"):read("*a")
 
-  --     local tlc  = suite:compileAndRun(tlcSource)
-  --     local code = "return 2 * 10 + (function() return 2 * 5 end)()"
+      --local tlc  = suite:compileAndRun(tlcSource)
+      local tlc = loadstring(tlcSource)()
+      local code = "return 2 * 10 + (function() return 2 * 5 end)()"
 
-  --     local tokens   = tlc.Tokenizer.new(code):tokenize()
-  --     local ast      = tlc.Parser.new(tokens):parse()
-  --     local proto    = tlc.CodeGenerator.new(ast):generate()
-  --     local bytecode = tlc.BytecodeEmitter.new(proto):emit()
+      local tokens   = tlc.Tokenizer.new(code):tokenize()
+      local ast      = tlc.Parser.new(tokens):parse()
+      local proto    = tlc.CodeGenerator.new(ast):generate()
+      return tlc.VirtualMachine.new(proto):execute()
+      --local bytecode = tlc.BytecodeEmitter.new(proto):emit()
 
-  --     local func = loadstring(bytecode)
+      --local func = loadstring(bytecode)
 
-  --     return func()
-  --   ]]
+      --return func()
+    ]]
 
-  --   -- Inject the test suite into the global scope for
-  --   -- access within the test code.
-  --   _G.suite = suite
-  --   suite:assertEqual(suite:compileAndRun(testCode), 30)
-  --   _G.suite = nil
-  -- end)
+    -- Inject the test suite into the global scope for
+    -- access within the test code.
+    _G.suite = suite
+    suite:assertEqual(suite:compileAndRun(testCode), 30)
+    _G.suite = nil
+  end)
 end)
 
 return suite:summary()

@@ -64,9 +64,9 @@ local record VirtualMachine
   meta_mod: function(self, a: LuaValue, b: LuaValue): LuaValue
   meta_pow: function(self, a: LuaValue, b: LuaValue): LuaValue
   meta_unm: function(self, a: LuaValue): LuaValue
-  meta_len: function(self, a: LuaValue): LuaValue
+  meta_len: function(self, a: LuaValue): integer
   meta_concat: function(self, a: LuaValue, b: LuaValue): LuaValue
-  lua_equal: function(self, a: LuaValue, b: LuaValue): LuaValue
+  lua_equal: function(self, a: LuaValue, b: LuaValue): boolean
   lua_lessthan: function(self, a: LuaValue, b: LuaValue): LuaValue
   meta_le: function(self, a: LuaValue, b: LuaValue): LuaValue
   lua_call: function(self, a: LuaValue, b: table.PackTable<LuaValue>): table.PackTable<LuaValue>
@@ -84,6 +84,7 @@ local record VirtualMachine
   lua_rawset: function(self, tbl: LuaValue, k: LuaValue, v: LuaValue)
 
   lua_setmetatable: function(self, v: LuaValue, tbl: LuaTable)
+  lua_getmetatable: function(self, v: LuaValue): LuaTable
   lua_setfenv: function(self, fn: LuaVmFunc, env: LuaTable)
   lua_getfenv: function(self, fn: LuaVmFunc): LuaTable
 
@@ -97,6 +98,8 @@ local record VirtualMachine
 
   lua_concat: function(self, args: table.PackTable<LuaValue>): LuaValue
 
+  luaL_newmetatable: function(self, key: string): LuaTable
+  luaL_setmetatable: function(self, ud: LuaValue, key: string)
   -- lua_load: function(self, )
 
   -- todo methods:
@@ -118,9 +121,14 @@ local record VirtualMachine
     upvalues: {UpValue}
   end
 
+  is_table: function(any): boolean
+  is_udata: function(any): boolean
+  is_extfunc: function(any): boolean
+  is_vmfunc: function(any): boolean
+
   enum LuaTableKind 'Table' end
   interface LuaTable
-    where self.kind == 'Table'
+    where VirtualMachine.is_table(self) -- self.kind == 'Table'
     kind: LuaTableKind
 
     values: {LuaValue:LuaValue}
@@ -129,7 +137,7 @@ local record VirtualMachine
 
   enum LuaUdataKind 'Udata' end
   interface LuaUdata
-    where self.kind == 'Udata'
+    where VirtualMachine.is_udata(self) -- self.kind == 'Udata'
     kind: LuaUdataKind
 
     data: any
@@ -141,7 +149,7 @@ local record VirtualMachine
 
   enum LuaExtFuncKind 'ExtFunc' end
   interface LuaExtFunc
-    where self.kind == 'ExtFunc'
+    where VirtualMachine.is_extfunc(self) -- self.kind == 'ExtFunc'
     kind: LuaExtFuncKind
 
     run: ExtFnType
@@ -149,7 +157,7 @@ local record VirtualMachine
 
   enum LuaVmFuncKind 'VmFunc' end
   interface LuaVmFunc
-    where self.kind == 'VmFunc'
+    where VirtualMachine.is_vmfunc(self) -- self.kind == 'VmFunc'
     kind: LuaVmFuncKind
 
     closure: Closure
@@ -159,6 +167,8 @@ local record VirtualMachine
 
   interface GlobalSetup
     metatables: {string:LuaTable}
+    packages: LuaTable
+    registry: LuaTable
     _G: LuaTable
   end
 
@@ -183,6 +193,36 @@ VirtualMachine._CONFIG = {
   FIELDS_PER_FLUSH = 50
 }
 
+
+function VirtualMachine.is_table(v: any): boolean
+  if v is table then
+    return v.kind == 'Table'
+  end
+  return false
+end
+
+function VirtualMachine.is_udata(v: any): boolean
+  if v is table then
+    return v.kind == 'Udata'
+  end
+  return false
+end
+
+function VirtualMachine.is_extfunc(v: any): boolean
+  if v is table then
+    return v.kind == 'ExtFunc'
+  end
+  return false
+end
+
+function VirtualMachine.is_vmfunc(v: any): boolean
+  if v is table then
+    return v.kind == 'VmFunc'
+  end
+  return false
+end
+
+
 --// VirtualMachine Constructor //--
 function VirtualMachine.new(): VirtualMachine
   local self: VirtualMachine = setmetatable({}, VirtualMachine as metatable<VirtualMachine>)
@@ -190,6 +230,8 @@ function VirtualMachine.new(): VirtualMachine
   self.closure   = nil   -- Current closure we're working with.
   self.globalSetup = {
     metatables = {},
+    packages = self:lua_newtable(),
+    registry = self:lua_newtable(),
     _G = self:lua_newtable(),
   }
 
@@ -217,50 +259,97 @@ function VirtualMachine:setClosure(closure: Closure): Closure
   return closure
 end
 
-function VirtualMachine:luaL_getmetafield(tbl: LuaValue, k: string): LuaValue
-  if tbl and tbl is LuaTable then
-    if tbl.metatable then
-      return tbl.metatable.values[k]
-    end
+function VirtualMachine:lua_getmetatable(tbl: LuaValue): LuaTable
+  if tbl is LuaTable then
+    return tbl.metatable
+  elseif tbl is LuaUdata then
+    return tbl.metatable
   else
-    local meta = self.globalSetup.metatables[type(tbl)]
-    if meta then
-      return meta.values[k]
-    end
+    return self.globalSetup.metatables[type(tbl)]
   end
+end
+
+function VirtualMachine:lua_setmetatable(tbl: LuaValue, meta: LuaTable)
+  if tbl is LuaTable then
+    tbl.metatable = meta
+  elseif tbl is LuaUdata then
+    tbl.metatable = meta
+  else
+    self.globalSetup.metatables[type(tbl)] = meta
+  end
+end
+
+function VirtualMachine:luaL_getmetafield(tbl: LuaValue, k: string): LuaValue
+  local meta = self:lua_getmetatable(tbl)
+  if meta then
+    return meta.values[k]
+  end
+end
+
+function VirtualMachine:luaL_newmetatable(name: string): LuaTable
+  local tbl = self:lua_newtable()
+  self.globalSetup.registry.values[name] = tbl
+  return tbl
+end
+
+function VirtualMachine:luaL_setmetatable(ud: LuaValue, name: string)
+  local tbl = assert(self.globalSetup.registry.values[name]) as LuaTable
+  return self:lua_setmetatable(ud, tbl)
 end
 
 function VirtualMachine:lua_gettable(tbl: LuaValue, k: LuaValue): LuaValue
-  if tbl and tbl is LuaTable then
+  local istbl = false
+  if tbl is LuaTable then
     local v = tbl.values[k]
-    if v == nil and tbl.metatable then
-      error'todo: gettable: table with metatable'
+    istbl = true
+    if v ~= nil then
+      return v
     end
-    return v
   end
-  error 'todo: gettable: other'
+  local metaidx = self:luaL_getmetafield(tbl, "__index")
+  if metaidx then
+    if metaidx is LuaVmFunc or metaidx is LuaExtFunc then
+      local res = self:lua_call(metaidx, { n = 2, tbl, k })
+      return res[1]
+    else
+      return self:lua_gettable(metaidx, k)
+    end
+  end
+  if not istbl then
+    self:lua_error("attempt to index a non-table value: " .. tostring(tbl) .. ' with key ' .. tostring(k))
+  end
 end
 
 function VirtualMachine:lua_settable(tbl: LuaValue, k: LuaValue, v: LuaValue)
+  local istbl = false
   if tbl is LuaTable then
-    -- todo: metatables
-    tbl.values[k] = v
-    -- local v = tbl.values[k]
-    -- if v == nil and tbl.metatable and tbl.metatable.__index then
-    --   error'todo'
-    -- end
-    return
-  elseif tbl is LuaUdata then
-    error('todo: settable: userdata')
+    istbl = true
+    local vold = tbl.values[k]
+    if vold == nil then
+      tbl.values[k] = v
+      return
+    end
   end
-  error('cannot index ' .. tostring(tbl))
+  local metaidx = self:luaL_getmetafield(tbl, "__newindex")
+  if metaidx then
+    self:lua_call(metaidx, { n = 2, tbl, k })
+  elseif istbl then
+    (tbl as LuaTable).values[k] = v
+  else
+    self:lua_error("attempt to index a non-table value")
+  end
 end
 
 function VirtualMachine:meta_add(a: LuaValue, b: LuaValue): LuaValue
   if a is number and b is number then
     return a + b
   else
-    error'todo: add other'
+    local meta = self:luaL_getmetafield(a, "__add") or self:luaL_getmetafield(b, "__add")
+    if not meta then
+      self:lua_error("attempt to add invalid values")
+    end
+    local res = self:lua_call(meta, { n = 2, a, b })
+    return res[1]
   end
 end
 
@@ -268,7 +357,12 @@ function VirtualMachine:meta_sub(a: LuaValue, b: LuaValue): LuaValue
   if a is number and b is number then
     return a - b
   else
-    error'todo: sub other'
+    local meta = self:luaL_getmetafield(a, "__sub") or self:luaL_getmetafield(b, "__sub")
+    if not meta then
+      self:lua_error("attempt to subtract invalid values")
+    end
+    local res = self:lua_call(meta, { n = 2, a, b })
+    return res[1]
   end
 end
 
@@ -276,7 +370,12 @@ function VirtualMachine:meta_div(a: LuaValue, b: LuaValue): LuaValue
   if a is number and b is number then
     return a / b
   else
-    error'todo: div other'
+    local meta = self:luaL_getmetafield(a, "__div") or self:luaL_getmetafield(b, "__div")
+    if not meta then
+      self:lua_error("attempt to divide invalid values")
+    end
+    local res = self:lua_call(meta, { n = 2, a, b })
+    return res[1]
   end
 end
 
@@ -284,7 +383,12 @@ function VirtualMachine:meta_mul(a: LuaValue, b: LuaValue): LuaValue
   if a is number and b is number then
     return a * b
   else
-    error'todo: mul other'
+    local meta = self:luaL_getmetafield(a, "__mul") or self:luaL_getmetafield(b, "__mul")
+    if not meta then
+      self:lua_error("attempt to mul invalid values")
+    end
+    local res = self:lua_call(meta, { n = 2, a, b })
+    return res[1]
   end
 end
 
@@ -292,7 +396,12 @@ function VirtualMachine:meta_mod(a: LuaValue, b: LuaValue): LuaValue
   if a is number and b is number then
     return a % b
   else
-    error'todo: mod other'
+    local meta = self:luaL_getmetafield(a, "__mod") or self:luaL_getmetafield(b, "__mod")
+    if not meta then
+      self:lua_error("attempt to mod invalid values")
+    end
+    local res = self:lua_call(meta, { n = 2, a, b })
+    return res[1]
   end
 end
 
@@ -300,7 +409,12 @@ function VirtualMachine:meta_pow(a: LuaValue, b: LuaValue): LuaValue
   if a is number and b is number then
     return a ^ b
   else
-    error'todo: pow other'
+    local meta = self:luaL_getmetafield(a, "__pow") or self:luaL_getmetafield(b, "__pow")
+    if not meta then
+      self:lua_error("attempt to pow invalid values")
+    end
+    local res = self:lua_call(meta, { n = 2, a, b })
+    return res[1]
   end
 end
 
@@ -308,20 +422,26 @@ function VirtualMachine:meta_unm(a: LuaValue): LuaValue
   if a is number then
     return -a
   else
-    error'todo: unm other'
+    local meta = self:luaL_getmetafield(a, "__unm")
+    if not meta then
+      self:lua_error("attempt to unm invalid value")
+    end
+    local res = self:lua_call(meta, { n = 2, a, a })
+    return res[1]
   end
 end
 
-function VirtualMachine:meta_len(a: LuaValue): LuaValue
+function VirtualMachine:meta_len(a: LuaValue): integer
   if a is string then
     return #a
+  end
+  local meta = self:luaL_getmetafield(a, "__len")
+  if meta then
+    return math.tointeger(tostring(self:lua_call(meta, { n = 2, a, a })[1]))
   elseif a is LuaTable then
-    if a.metatable then
-      error'todo: len metatable'
-    end
     return #(a.values as {any})
   else
-    error'todo: len other'
+    self:lua_error("attempt to get length of invalid value")
   end
 end
 
@@ -329,12 +449,34 @@ function VirtualMachine:meta_concat(a: LuaValue, b: LuaValue): LuaValue
   if (a is string or a is number) and (b is string or b is number) then
     return (a as string) .. (b as string)
   else
-    error'todo: concat'
+    local meta = self:luaL_getmetafield(a, "__concat") or self:luaL_getmetafield(b, "__concat")
+    if not meta then
+      self:lua_error("attempt to concat invalid values")
+    end
+    local res = self:lua_call(meta, { n = 2, a, b })
+    return res[1]
   end
 end
 
-function VirtualMachine:lua_equal(a: LuaValue, b: LuaValue): LuaValue
-  return a == b
+function VirtualMachine:lua_equal(a: LuaValue, b: LuaValue): boolean
+  if a == b then return true end
+  if a is LuaTable and b is LuaTable then
+    local meta = self:luaL_getmetafield(a, "__eq") or self:luaL_getmetafield(b, "__eq")
+    if not meta then
+      return false
+    end
+    local res = self:lua_call(meta, { n = 2, a, b })
+    return not not res[1]
+  elseif a is LuaUdata and b is LuaUdata then
+    local meta = self:luaL_getmetafield(a, "__eq") or self:luaL_getmetafield(b, "__eq")
+    if not meta then
+      return false
+    end
+    local res = self:lua_call(meta, { n = 2, a, b })
+    return not not res[1]
+  else
+    return false
+  end
 end
 
 function VirtualMachine:lua_lessthan(a: LuaValue, b: LuaValue): LuaValue
@@ -343,7 +485,12 @@ function VirtualMachine:lua_lessthan(a: LuaValue, b: LuaValue): LuaValue
   elseif a is number and b is number then
     return a < b
   else
-    error'todo: lt other'
+    local meta = self:luaL_getmetafield(a, "__lt") or self:luaL_getmetafield(b, "__lt")
+    if not meta then
+      self:lua_error("attempt to lt invalid values")
+    end
+    local res = self:lua_call(meta, { n = 2, a, b })
+    return not not res[1]
   end
 end
 
@@ -353,35 +500,48 @@ function VirtualMachine:meta_le(a: LuaValue, b: LuaValue): LuaValue
   elseif a is number and b is number then
     return a <= b
   else
-    error'todo: le other'
+    local meta = self:luaL_getmetafield(a, "__le") or self:luaL_getmetafield(b, "__le")
+    if not meta then
+      return not self:lua_lessthan(b, a)
+    end
+    local res = self:lua_call(meta, { n = 2, a, b })
+    return not not res[1]
   end
 end
 
 function VirtualMachine:lua_call(a: LuaValue, b: table.PackTable<LuaValue>): table.PackTable<LuaValue>
-  if a and a is LuaVmFunc then
+  if a is LuaVmFunc then
     -- can be simply executed.
     local currclosure = self.closure
     self:setClosure(a.closure)
     local rets = self:executeClosure(b)
     self:setClosure(currclosure)
     return rets
-  elseif a and a is LuaExtFunc then
-    return a.run(self, b)
+  elseif a is LuaExtFunc then
+    return assert(a.run(self, b))
   else
-    error'attempt to call a non-function value'
+    local meta = self:luaL_getmetafield(a, "__call")
+    if meta then
+      return self:lua_call(meta, table.pack(a, table.unpack(b, 1, b.n)))
+    end
+    self:lua_error("attempt to call a non-function value")
   end
 end
 
 -- we have the optimisation that it doesn't need to be set back, so it is a proper tail call
 function VirtualMachine:meta_tailcall(a: LuaValue, b: table.PackTable<LuaValue>): table.PackTable<LuaValue>
-  if a and a is LuaVmFunc then
+  if a is LuaVmFunc then
     -- can be simply executed.
     self:setClosure(a.closure)
     return self:executeClosure(b)
-  elseif a and a is LuaExtFunc then
+  elseif a is LuaExtFunc then
     return a.run(self, b)
   else
-    error'attempt to call a non-function value'
+    local meta = self:luaL_getmetafield(a, "__call")
+    if meta then
+      return self:meta_tailcall(meta, table.pack(a, table.unpack(b, 1, b.n)))
+    end
+    self:lua_error("attempt to call a non-function value")
   end
 end
 
@@ -392,7 +552,16 @@ function VirtualMachine:lua_newtable(): LuaTable
   }
 end
 
+function VirtualMachine:lua_newuserdata(): LuaUdata
+  return {
+    kind = 'Udata',
+    data = nil,
+    value = nil,
+  }
+end
+
 function VirtualMachine:lua_error(err: any): table.PackTable<LuaValue>
+  -- todo: do better error handling with pcall etc.
   error(err)
 end
 
