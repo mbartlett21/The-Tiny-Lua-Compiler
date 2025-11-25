@@ -1067,7 +1067,7 @@ function Parser:expectTokenKind(expectedKind)
   end
 
   -- No match? Syntax error.
-  local actualKind = self.currentToken.kind
+  local actualKind = self.currentToken and self.currentToken.kind or "EOF"
   self:error(
     string.format(
       "Expected a %s, but found %s",

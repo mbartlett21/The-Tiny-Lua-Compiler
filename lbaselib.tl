@@ -1,8 +1,9 @@
 local VirtualMachine = require'new_vm'
 
-local type LuaExtFunc = VirtualMachine.LuaExtFunc
+-- local type LuaExtFunc = VirtualMachine.LuaExtFunc
+local type LuaExtFuncSimple = VirtualMachine.LuaExtFuncSimple
 -- local type LuaVmFunc = VirtualMachine.LuaVmFunc
--- local type LuaTable = VirtualMachine.LuaTable
+local type LuaTable = VirtualMachine.LuaTable
 local type LuaValue = VirtualMachine.LuaValue
 
 -- local type UpValue = VirtualMachine.UpValue
@@ -12,9 +13,31 @@ local record lbaselib
    open: function(vm: VirtualMachine)
 end
 
-local macroexp extfunc(fn: function(VirtualMachine, table.PackTable<LuaValue>): table.PackTable<LuaValue>): LuaExtFunc
+-- local macroexp extfunc(fn: function(VirtualMachine, table.PackTable<LuaValue>): table.PackTable<LuaValue>): LuaExtFunc
+--    return {
+--       kind = 'ExtFunc',
+--       run = fn,
+--    }
+-- end
+
+-- local function wrap_simplef(fn: function(vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>): function(VirtualMachine): integer
+--    return function(vm: VirtualMachine): integer
+--       local arg_n = vm:lua_gettop()
+--       local tbl: table.PackTable<LuaValue> = { n = arg_n }
+--       for i = 1, arg_n do
+--          tbl[i] = vm:lua_unstackvalue(i)
+--       end
+--       local res = fn(vm, tbl)
+--       for i = 1, res.n do
+--          vm:lua_stackvalue(res[i])
+--       end
+--       return res.n
+--    end
+-- end
+
+local macroexp extfuncsimple(fn: function(VirtualMachine, table.PackTable<LuaValue>): table.PackTable<LuaValue>): LuaExtFuncSimple
    return {
-      kind = 'ExtFunc',
+      kind = 'ExtFuncSimple',
       run = fn,
    }
 end
@@ -23,7 +46,7 @@ function lbaselib.ipairsaux(vm: VirtualMachine, args: table.PackTable<LuaValue>)
    local int = assert(math.tointeger(args[2]))
    local v2 = int + 1
    local tbl = args[1]
-   local val = vm:lua_gettable(tbl, v2)
+   local val = vm:simple_gettable(tbl, v2)
 
    if val then
       return {
@@ -36,10 +59,10 @@ function lbaselib.ipairsaux(vm: VirtualMachine, args: table.PackTable<LuaValue>)
    end
 end
 
-function lbaselib.ipairs(vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
+function lbaselib.ipairs(_vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
    return {
       n = 3,
-      extfunc(lbaselib.ipairsaux),
+      extfuncsimple(lbaselib.ipairsaux),
       args[1],
       0
    }
@@ -62,13 +85,13 @@ function lbaselib.next(vm: VirtualMachine, args: table.PackTable<LuaValue>): tab
 end
 
 function lbaselib.pairs(vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
-   local meta = vm:luaL_getmetafield(args[1], "__pairs")
+   local meta = vm:simple_luaL_getmetafield(args[1], "__pairs")
    if meta then
-      return vm:lua_call(meta, { n = 1, args[1] })
+      return vm:simple_call(meta, { n = 1, args[1] })
    else
       return {
          n = 3,
-         extfunc(lbaselib.next),
+         extfuncsimple(lbaselib.next),
          args[1],
       }
    end
@@ -138,17 +161,26 @@ function lbaselib.select(vm: VirtualMachine, args: table.PackTable<LuaValue>): t
    end
 end
 
+-- function lbaselib.loadfile(vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
+--    local s = vm:luaL_checklstring(1)
+--    local chunkname = vm:luaL_optstring(2)
+
+--    return loadaux(vm, vm:luaL_loadbuffer(s, chunkname))
+-- end
+
 function lbaselib.open(vm: VirtualMachine)
    local globals = vm.globalSetup._G
 
-   globals.values.assert = extfunc(lbaselib.assert)
-   globals.values.ipairs = extfunc(lbaselib.ipairs)
-   globals.values.pairs = extfunc(lbaselib.pairs)
-   globals.values.next = extfunc(lbaselib.next)
-   globals.values.print = extfunc(lbaselib.print)
-   globals.values.tonumber = extfunc(lbaselib.tonumber)
-   globals.values.error = extfunc(lbaselib.error)
-   globals.values.select = extfunc(lbaselib.select)
+   globals.values.assert = extfuncsimple(lbaselib.assert)
+   globals.values.ipairs = extfuncsimple(lbaselib.ipairs)
+   globals.values.pairs = extfuncsimple(lbaselib.pairs)
+   globals.values.next = extfuncsimple(lbaselib.next)
+   globals.values.print = extfuncsimple(lbaselib.print)
+   globals.values.tonumber = extfuncsimple(lbaselib.tonumber)
+   globals.values.error = extfuncsimple(lbaselib.error)
+   globals.values.select = extfuncsimple(lbaselib.select)
+   globals.values._G = globals
+   -- globals.values.loadfile = extfuncsimple(lbaselib.loadfile)
 end
 
 return lbaselib
