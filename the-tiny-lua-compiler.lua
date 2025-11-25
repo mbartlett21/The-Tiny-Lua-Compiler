@@ -15,6 +15,18 @@
   lexical scoping, upvalues (closures), and proper operator precedence.
 --]]
 
+local whitelist = {
+  ['unpack'] = true,
+  ['loadstring'] = true,
+}
+
+setmetatable(_G, {
+  __index = function(self, idx)
+    if whitelist[idx] then return nil end
+    error("unpexpected index: " .. idx)
+  end,
+})
+
 -- Converts a list into a Set (lookup table) for O(1) access.
 --
 -- In Lua, iterating over a list to check for existence is O(n). By converting
@@ -1376,7 +1388,8 @@ function Parser:parsePrimaryExpression()
       return { kind = "FunctionExpression",
         body       = body,
         parameters = parameters,
-        isVararg   = isVararg
+        isVararg   = isVararg,
+        functionName = "<anonymous fn>"
       }
     end
 
@@ -1545,7 +1558,8 @@ function Parser:parseLocalStatement()
         kind       = "FunctionExpression",
         body       = body,
         parameters = parameters,
-        isVararg   = isVararg
+        isVararg   = isVararg,
+        functionName = functionName,
       }
     }
   else
@@ -1750,6 +1764,8 @@ function Parser:parseFunctionDeclaration()
   -- Parse the base function name (e.g., `myFunc` in `myFunc.new`).
   local expression = self:consumeVariable()
 
+  local functionName = expression.name
+
   -- This loop handles `.field` and `:method` parts.
   local isMethodDeclaration = false
   while self.currentToken do
@@ -1769,6 +1785,7 @@ function Parser:parseFunctionDeclaration()
         value = fieldName
       }
     }
+    functionName = functionName .. (isDot and '.' or ':') .. expression.index.value
 
     if isColon then
       isMethodDeclaration = true
@@ -1799,7 +1816,8 @@ function Parser:parseFunctionDeclaration()
       kind       = "FunctionExpression",
       body       = body,
       parameters = parameters,
-      isVararg   = isVararg
+      isVararg   = isVararg,
+      functionName = functionName,
     } }
   }
 end
@@ -3173,6 +3191,7 @@ function CodeGenerator:processFunction(functionNode, closureRegister)
   local childProto  = self:emitPrototype({
     isVararg  = functionNode.isVararg,
     numParams = #functionNode.parameters,
+    functionName = functionNode.functionName,
   })
   self.proto = childProto
   self:processFunctionBody(functionNode)
