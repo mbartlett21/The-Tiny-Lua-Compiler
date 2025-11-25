@@ -603,7 +603,7 @@ end
 
 function VirtualMachine:lua_error(err)
 
-   print(self.closure.proto.functionName)
+
    error(err, 2)
 end
 
