@@ -3,24 +3,19 @@ local VirtualMachine = require'new_vm'
 -- local type LuaExtFunc = VirtualMachine.LuaExtFunc
 local type LuaExtFuncSimple = VirtualMachine.LuaExtFuncSimple
 -- local type LuaVmFunc = VirtualMachine.LuaVmFunc
-local type LuaUdata = VirtualMachine.LuaUdata
+-- local type LuaUdata = VirtualMachine.LuaUdata
 -- local type LuaTable = VirtualMachine.LuaTable
 local type LuaValue = VirtualMachine.LuaValue
 
 -- local type UpValue = VirtualMachine.UpValue
 -- local type Closure = VirtualMachine.Closure
 
-local LUA_FILEHANDLE <const> = "FILE*"
-
 local record lstrlib
    open: function(vm: VirtualMachine)
 end
 
 -- local macroexp extfunc(fn: function(VirtualMachine, table.PackTable<LuaValue>): table.PackTable<LuaValue>): LuaExtFunc
---    return {
---       kind = 'ExtFunc',
---       run = fn,
---    }
+--    return { kind = 'ExtFunc', run = fn }
 -- end
 
 -- local function wrap_simplef(fn: function(vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>): function(VirtualMachine): integer
@@ -39,10 +34,7 @@ end
 -- end
 
 local macroexp extfuncsimple(fn: function(VirtualMachine, table.PackTable<LuaValue>): table.PackTable<LuaValue>): LuaExtFuncSimple
-   return {
-      kind = 'ExtFuncSimple',
-      run = fn,
-   }
+   return { kind = 'ExtFuncSimple', run = fn }
 end
 
 function lstrlib.gmatch(_vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
@@ -53,7 +45,7 @@ function lstrlib.gmatch(_vm: VirtualMachine, args: table.PackTable<LuaValue>): t
    local fn = string.gmatch(str, pat, init)
    return {
       n = 1,
-      extfuncsimple(function(vm: VirtualMachine, _inner: table.PackTable<LuaValue>): table.PackTable<LuaValue>
+      extfuncsimple(function(_vm: VirtualMachine, _inner: table.PackTable<LuaValue>): table.PackTable<LuaValue>
          return table.pack(fn())
       end),
    }
@@ -77,7 +69,7 @@ end
 
 function lstrlib.char(_vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
    -- we return a simple closure
-   local ints: table.Packtable<integer> = { n = args.n }
+   local ints: table.PackTable<integer> = { n = args.n }
    for i = 1, args.n do
       ints[i] = math.tointeger(args[i])
    end

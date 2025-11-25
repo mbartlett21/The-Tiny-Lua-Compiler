@@ -3,9 +3,7 @@ local VirtualMachine = require('new_vm')
 
 
 
-local liolib = require('liolib')
-local lbaselib = require('lbaselib')
-local lstrlib = require('lstrlib')
+local lualibs = require('lualibs')
 
 local function print_usage()
    print(string.format([=[
@@ -119,9 +117,7 @@ local function dotty(vm)
 end
 
 local vm = VirtualMachine.new()
-lbaselib.open(vm)
-liolib.open(vm)
-lstrlib.open(vm)
+lualibs.open(vm)
 
 local script = 0
 local has_i
