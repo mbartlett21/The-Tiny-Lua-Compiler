@@ -1,7 +1,7 @@
-local tlc = require'the-tiny-lua-compiler'
+local tlc = require'tlc'
 
 local type Prototype = tlc.CodeGenerator.Prototype
-local type Instr = tlc.CodeGenerator.Instr --{string,integer,integer,integer}
+-- local type Instr = tlc.CodeGenerator.Instr --{string,integer,integer,integer}
 
 --[[
     ============================================================================
@@ -37,19 +37,74 @@ local type Instr = tlc.CodeGenerator.Instr --{string,integer,integer,integer}
 --]]
 
 --* Constants *--
-local unpack = table.unpack
+-- local unpack = table.unpack
 local USE_CURRENT_TOP = 0
 
 --* VirtualMachine *--
 local record VirtualMachine
   __index: VirtualMachine
 
-  new: function(Prototype): VirtualMachine
+  new: function(): VirtualMachine
 
   interface Config
     FIELDS_PER_FLUSH: integer
   end
   _CONFIG: Config
+
+  setClosure: function(self, closure: VirtualMachine.Closure): VirtualMachine.Closure
+  executeClosure: function(self, params: table.PackTable<LuaValue>): table.PackTable<LuaValue>
+  execute: function(self, Prototype): table.PackTable<LuaValue>
+
+  lua_gettable: function(self, tbl: LuaValue, k: LuaValue): LuaValue
+  lua_settable: function(self, tbl: LuaValue, k: LuaValue, v: LuaValue)
+  meta_add: function(self, a: LuaValue, b: LuaValue): LuaValue
+  meta_sub: function(self, a: LuaValue, b: LuaValue): LuaValue
+  meta_div: function(self, a: LuaValue, b: LuaValue): LuaValue
+  meta_mul: function(self, a: LuaValue, b: LuaValue): LuaValue
+  meta_mod: function(self, a: LuaValue, b: LuaValue): LuaValue
+  meta_pow: function(self, a: LuaValue, b: LuaValue): LuaValue
+  meta_unm: function(self, a: LuaValue): LuaValue
+  meta_len: function(self, a: LuaValue): LuaValue
+  meta_concat: function(self, a: LuaValue, b: LuaValue): LuaValue
+  lua_equal: function(self, a: LuaValue, b: LuaValue): LuaValue
+  lua_lessthan: function(self, a: LuaValue, b: LuaValue): LuaValue
+  meta_le: function(self, a: LuaValue, b: LuaValue): LuaValue
+  lua_call: function(self, a: LuaValue, b: table.PackTable<LuaValue>): table.PackTable<LuaValue>
+  meta_tailcall: function(self, a: LuaValue, b: table.PackTable<LuaValue>): table.PackTable<LuaValue>
+
+  meta_getmetafield: function(self, a: LuaValue, field: string): LuaValue
+
+  lua_newtable: function(self): LuaTable
+  lua_newuserdata: function(self): LuaUdata
+  lua_error: function(self, err: any): table.PackTable<LuaValue>
+  lua_newclosure: function(self, run: ExtFnType, values: table.PackTable<LuaValue>): LuaExtFunc
+  lua_newfunction: function(self, run: ExtFnType): LuaExtFunc
+
+  lua_rawget: function(self, tbl: LuaValue, k: LuaValue): LuaValue
+  lua_rawset: function(self, tbl: LuaValue, k: LuaValue, v: LuaValue)
+
+  lua_setmetatable: function(self, v: LuaValue, tbl: LuaTable)
+  lua_setfenv: function(self, fn: LuaVmFunc, env: LuaTable)
+  lua_getfenv: function(self, fn: LuaVmFunc): LuaTable
+
+  lua_tolstring: function(self, v: LuaValue): string
+  lua_tonumber: function(self, v: LuaValue): number
+  lua_touserdata: function(self, v: LuaValue): LuaUdata
+
+  lua_newthread: function(self): VirtualMachine
+
+  lua_pcall: function(self, fn: LuaValue, args: table.PackTable<LuaValue>, err ?: LuaValue): boolean, table.PackTable<LuaValue>
+
+  lua_concat: function(self, args: table.PackTable<LuaValue>): LuaValue
+
+  -- lua_load: function(self, )
+
+  -- todo methods:
+  -- lua_tothread: function(self, v: LuaValue): LuaThread
+  -- lua_yield: function(self, values: table.PackTable<LuaValue>): table.PackTable<LuaValue>
+  -- lua_resume: function(self, coro: LuaThread, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
+  -- lua_status: function(self, coro: LuaThread): integer
+
 
   interface UpValue
     stack: {LuaValue}
@@ -72,12 +127,24 @@ local record VirtualMachine
     metatable: LuaTable
   end
 
+  enum LuaUdataKind 'Udata' end
+  interface LuaUdata
+    where self.kind == 'Udata'
+    kind: LuaUdataKind
+
+    data: any
+    value: LuaValue
+    metatable: LuaTable
+  end
+
+  type ExtFnType = function(VirtualMachine, table.PackTable<LuaValue>): table.PackTable<LuaValue>
+
   enum LuaExtFuncKind 'ExtFunc' end
   interface LuaExtFunc
     where self.kind == 'ExtFunc'
     kind: LuaExtFuncKind
 
-    run: function(VirtualMachine, table.PackTable<LuaValue>): table.PackTable<LuaValue>
+    run: ExtFnType
   end
 
   enum LuaVmFuncKind 'VmFunc' end
@@ -88,27 +155,25 @@ local record VirtualMachine
     closure: Closure
   end
 
-  type LuaValue = string | number | boolean | LuaTable | LuaExtFunc | LuaVmFunc
+  type LuaValue = string | number | boolean | LuaTable | LuaExtFunc | LuaVmFunc | LuaUdata
 
   interface GlobalSetup
-    interface Metatables
-      string: LuaTable
-      number: LuaTable
-      ['nil']: LuaTable
-      boolean: LuaTable
-    end
-    metatables: Metatables
+    metatables: {string:LuaTable}
     _G: LuaTable
   end
 
   -- instance fields
   globalSetup: GlobalSetup
-  mainProto: Prototype
   closure: Closure
 end
 
-local type LuaValue = VirtualMachine.LuaValue
+local type LuaExtFunc = VirtualMachine.LuaExtFunc
+local type LuaVmFunc = VirtualMachine.LuaVmFunc
 local type LuaTable = VirtualMachine.LuaTable
+local type LuaValue = VirtualMachine.LuaValue
+
+local type UpValue = VirtualMachine.UpValue
+local type Closure = VirtualMachine.Closure
 
 VirtualMachine.__index = VirtualMachine -- Set up for method calls via `.`.
 
@@ -118,11 +183,14 @@ VirtualMachine._CONFIG = {
 }
 
 --// VirtualMachine Constructor //--
-function VirtualMachine.new(proto: Prototype): VirtualMachine
+function VirtualMachine.new(): VirtualMachine
   local self: VirtualMachine = setmetatable({}, VirtualMachine as metatable<VirtualMachine>)
 
-  self.mainProto = proto -- Should only be used in `:execute()`.
   self.closure   = nil   -- Current closure we're working with.
+  self.globalSetup = {
+    metatables = {},
+    _G = self:lua_newtable(),
+  }
 
   return self
 end
@@ -136,7 +204,7 @@ end
 --   return select("#", ...), { ... }
 -- end
 
-function VirtualMachine:setClosure(closure: VirtualMachine.Closure): VirtualMachine.Closure
+function VirtualMachine:setClosure(closure: Closure): Closure
   closure = {
     nupvalues = closure.nupvalues or 0,
     env       = closure.env or self.globalSetup._G,
@@ -148,18 +216,31 @@ function VirtualMachine:setClosure(closure: VirtualMachine.Closure): VirtualMach
   return closure
 end
 
-function VirtualMachine:meta_gettable(tbl: LuaValue, k: LuaValue): LuaValue
-  if tbl is LuaTable then
+function VirtualMachine:meta_getmetafield(tbl: LuaValue, k: string): LuaValue
+  if tbl and tbl is LuaTable then
+    if tbl.metatable then
+      return tbl.metatable.values[k]
+    end
+  else
+    local meta = self.globalSetup.metatables[type(tbl)]
+    if meta then
+      return meta.values[k]
+    end
+  end
+end
+
+function VirtualMachine:lua_gettable(tbl: LuaValue, k: LuaValue): LuaValue
+  if tbl and tbl is LuaTable then
     local v = tbl.values[k]
     if v == nil and tbl.metatable then
-      error'todo'
+      error'todo: gettable: table with metatable'
     end
     return v
   end
-  error 'todo'
+  error 'todo: gettable: other'
 end
 
-function VirtualMachine:meta_settable(tbl: LuaValue, k: LuaValue, v: LuaValue)
+function VirtualMachine:lua_settable(tbl: LuaValue, k: LuaValue, v: LuaValue)
   if tbl is LuaTable then
     -- todo: metatables
     tbl.values[k] = v
@@ -167,16 +248,18 @@ function VirtualMachine:meta_settable(tbl: LuaValue, k: LuaValue, v: LuaValue)
     -- if v == nil and tbl.metatable and tbl.metatable.__index then
     --   error'todo'
     -- end
-    -- return v
+    return
+  elseif tbl is LuaUdata then
+    error('todo: settable: userdata')
   end
-  error 'todo'
+  error('cannot index ' .. tostring(tbl))
 end
 
 function VirtualMachine:meta_add(a: LuaValue, b: LuaValue): LuaValue
   if a is number and b is number then
     return a + b
   else
-    error'todo'
+    error'todo: add other'
   end
 end
 
@@ -184,7 +267,7 @@ function VirtualMachine:meta_sub(a: LuaValue, b: LuaValue): LuaValue
   if a is number and b is number then
     return a - b
   else
-    error'todo'
+    error'todo: sub other'
   end
 end
 
@@ -192,7 +275,7 @@ function VirtualMachine:meta_div(a: LuaValue, b: LuaValue): LuaValue
   if a is number and b is number then
     return a / b
   else
-    error'todo'
+    error'todo: div other'
   end
 end
 
@@ -200,7 +283,7 @@ function VirtualMachine:meta_mul(a: LuaValue, b: LuaValue): LuaValue
   if a is number and b is number then
     return a * b
   else
-    error'todo'
+    error'todo: mul other'
   end
 end
 
@@ -208,7 +291,7 @@ function VirtualMachine:meta_mod(a: LuaValue, b: LuaValue): LuaValue
   if a is number and b is number then
     return a % b
   else
-    error'todo'
+    error'todo: mod other'
   end
 end
 
@@ -216,7 +299,7 @@ function VirtualMachine:meta_pow(a: LuaValue, b: LuaValue): LuaValue
   if a is number and b is number then
     return a ^ b
   else
-    error'todo'
+    error'todo: pow other'
   end
 end
 
@@ -224,40 +307,42 @@ function VirtualMachine:meta_unm(a: LuaValue): LuaValue
   if a is number then
     return -a
   else
-    error'todo'
+    error'todo: unm other'
   end
 end
 
 function VirtualMachine:meta_len(a: LuaValue): LuaValue
-  if a is LuaTable then
+  if a is string then
+    return #a
+  elseif a is LuaTable then
     if a.metatable then
-      error'todo'
+      error'todo: len metatable'
     end
     return #(a.values as {any})
   else
-    error'todo'
+    error'todo: len other'
   end
 end
 
 function VirtualMachine:meta_concat(a: LuaValue, b: LuaValue): LuaValue
-  if a is string and (b is string or b is number) then
-    return a .. b
+  if (a is string or a is number) and (b is string or b is number) then
+    return (a as string) .. (b as string)
   else
-    error'todo'
+    error'todo: concat'
   end
 end
 
-function VirtualMachine:meta_eq(a: LuaValue, b: LuaValue): LuaValue
+function VirtualMachine:lua_equal(a: LuaValue, b: LuaValue): LuaValue
   return a == b
 end
 
-function VirtualMachine:meta_lt(a: LuaValue, b: LuaValue): LuaValue
+function VirtualMachine:lua_lessthan(a: LuaValue, b: LuaValue): LuaValue
   if a is string and b is string then
     return a < b
   elseif a is number and b is number then
     return a < b
   else
-    error'todo'
+    error'todo: lt other'
   end
 end
 
@@ -267,15 +352,47 @@ function VirtualMachine:meta_le(a: LuaValue, b: LuaValue): LuaValue
   elseif a is number and b is number then
     return a <= b
   else
-    error'todo'
+    error'todo: le other'
   end
 end
 
-function VirtualMachine:api_newtable(): LuaTable
+function VirtualMachine:lua_call(a: LuaValue, b: table.PackTable<LuaValue>): table.PackTable<LuaValue>
+  if a and a is LuaVmFunc then
+    -- can be simply executed.
+    local currclosure = self.closure
+    self:setClosure(a.closure)
+    local rets = self:executeClosure(b)
+    self:setClosure(currclosure)
+    return rets
+  elseif a and a is LuaExtFunc then
+    return a.run(self, b)
+  else
+    error'attempt to call a non-function value'
+  end
+end
+
+-- we have the optimisation that it doesn't need to be set back, so it is a proper tail call
+function VirtualMachine:meta_tailcall(a: LuaValue, b: table.PackTable<LuaValue>): table.PackTable<LuaValue>
+  if a and a is LuaVmFunc then
+    -- can be simply executed.
+    self:setClosure(a.closure)
+    return self:executeClosure(b)
+  elseif a and a is LuaExtFunc then
+    return a.run(self, b)
+  else
+    error'attempt to call a non-function value'
+  end
+end
+
+function VirtualMachine:lua_newtable(): LuaTable
   return {
     kind = 'Table',
     values = {},
   }
+end
+
+function VirtualMachine:lua_error(err: any): table.PackTable<LuaValue>
+  error(err)
 end
 
 local function do_number(v: LuaValue): number
@@ -288,8 +405,34 @@ local function do_number(v: LuaValue): number
   error("Exspected number")
 end
 
+local function unpacklvalue(v: LuaValue): any
+  if v is nil or v is boolean or v is number or v is string then
+    return v
+  elseif v is LuaVmFunc then
+    error("Functions can't be unpacked")
+  elseif v is LuaExtFunc then
+    return v.run
+  elseif v is LuaTable then
+    local newtbl = {}
+    for k, v2 in pairs(v.values) do
+      newtbl[unpacklvalue(k)] = unpacklvalue(v2)
+    end
+    return newtbl
+  end
+end
+
+function VirtualMachine:unpack_tables(items: table.PackTable<LuaValue>): table.PackTable<any>
+  local new: table.PackTable<any> = { n = items.n }
+
+  for i = 1, items.n do
+    new[i] = unpacklvalue(items[i])
+  end
+
+  return new
+end
+
 --// Execution //--
-function VirtualMachine:executeClosure(params: table.PackTable<LuaValue>)
+function VirtualMachine:executeClosure(params: table.PackTable<LuaValue>): table.PackTable<LuaValue>
   -- Optimization: localize fields.
   local closure   = self.closure
   local stack: {LuaValue}     = {}
@@ -303,7 +446,7 @@ function VirtualMachine:executeClosure(params: table.PackTable<LuaValue>)
 
   local maxStackSize = proto.maxStackSize
   local top = maxStackSize
-  local upvalueStack = {}
+  local upvalueStack: {UpValue} = {}
   local maxUpvalue = -1
 
   -- Gets a value from either the stack or constants table.
@@ -379,17 +522,17 @@ function VirtualMachine:executeClosure(params: table.PackTable<LuaValue>)
     -- OP_GETGLOBAL [A, Bx]    R(A) := Gbl[Kst(Bx)]
     -- Read a global variable into a register.
     elseif opcode == "GETGLOBAL" then
-      stack[a] = self:meta_gettable(env, constants[-b])
+      stack[a] = self:lua_gettable(env, constants[-b])
 
     -- OP_GETTABLE [A, B, C]    R(A) := R(B)[RK(C)]
     -- Read a table element into a register.
     elseif opcode == "GETTABLE" then
-      stack[a] = self:meta_gettable(stack[b], rk(c))
+      stack[a] = self:lua_gettable(stack[b], rk(c))
 
     -- OP_SETGLOBAL [A, Bx]    Gbl[Kst(Bx)] := R(A)
     -- Write a register value into a global variable.
     elseif opcode == "SETGLOBAL" then
-      self:meta_settable(env, rk(b), stack[a])
+      self:lua_settable(env, rk(b), stack[a])
 
     -- OP_SETUPVAL [A, B]    UpValue[B] := R(A)
     -- Write a register value into an upvalue.
@@ -400,20 +543,20 @@ function VirtualMachine:executeClosure(params: table.PackTable<LuaValue>)
     -- OP_SETTABLE [A, B, C]    R(A)[RK(B)] := RK(C)
     -- Write a register value into a table element.
     elseif opcode == "SETTABLE" then
-      self:meta_settable(stack[a], rk(b), rk(c))
+      self:lua_settable(stack[a], rk(b), rk(c))
 
     -- OP_NEWTABLE [A, B, C]    R(A) := {} (size = B,C)
     -- Create a new table and store it in a register.
     -- B = array part size hint, C = hash part size hint (ignored here).
     elseif opcode == "NEWTABLE" then
-      stack[a] = self:api_newtable()
+      stack[a] = self:lua_newtable()
 
     -- OP_SELF [A, B, C]    R(A+1) := R(B); R(A) := R(B)[RK(C)]
     -- Prepare an object method for calling.
     elseif opcode == "SELF" then
       local rb = stack[b]
       stack[a + 1] = rb
-      stack[a] = self:meta_gettable(rb, rk(c))
+      stack[a] = self:lua_gettable(rb, rk(c))
 
     -- OP_ADD [A, B, C]    R(A) := RK(B) + RK(C)
     -- Add two values and store the result in a register.
@@ -477,7 +620,7 @@ function VirtualMachine:executeClosure(params: table.PackTable<LuaValue>)
     -- Conditional jump based on equality.
     elseif opcode == "EQ" then
       local bv, cv = rk(b), rk(c)
-      local isEqual = bv == cv or self:meta_eq(bv, cv)
+      local isEqual = bv == cv or self:lua_equal(bv, cv)
       local bool = (a == 1)
       if isEqual ~= bool then
         pc = pc + 1
@@ -486,7 +629,7 @@ function VirtualMachine:executeClosure(params: table.PackTable<LuaValue>)
     -- OP_LT [A, B, C]    if ((RK(B) < RK(C)) ~= A) then pc++
     -- Conditional jump based on less-than comparison.
     elseif opcode == "LT" then
-      local isLessThan = self:meta_lt(rk(b), rk(c))
+      local isLessThan = self:lua_lessthan(rk(b), rk(c))
       local bool = (a == 1)
       if isLessThan ~= bool then
         pc = pc + 1
@@ -547,15 +690,20 @@ function VirtualMachine:executeClosure(params: table.PackTable<LuaValue>)
         top = a + b
       end
 
-      local nReturns, returns = pack(func(unpack(stack, a + 1, top - 1)))
+      local subParams: table.PackTable<LuaValue> = { n = top - 1 - a }
+      for i = a + 1, top - 1 do
+        subParams[i - a] = stack[i]
+      end
+      local returns = self:lua_call(func, subParams)
+      -- local nReturns, returns = pack(func(unpack(stack, a + 1, top - 1)))
 
       if c ~= USE_CURRENT_TOP then
-        nReturns = c - 1
+        returns.n = c - 1
       else
         -- Multi-return: push all results onto the stack.
-        top = a + nReturns
+        top = a + returns.n
       end
-      for index = 1, nReturns do
+      for index = 1, returns.n do
         stack[a + index - 1] = returns[index]
       end
 
@@ -580,8 +728,12 @@ function VirtualMachine:executeClosure(params: table.PackTable<LuaValue>)
       -- Optimization:
       --   Since TAILCALL always comes before RETURN,
       --   we can just return the function call results directly.
-
-      return func(unpack(stack, a + 1, top - 1))
+      local subParams: table.PackTable<LuaValue> = { n = top - 1 - a }
+      for i = a + 1, top - 1 do
+        subParams[i - a] = stack[i]
+      end
+      return self:meta_tailcall(func, subParams)
+      -- return func(unpack(stack, a + 1, top - 1))
 
     -- OP_RETURN [A, B]    return R(A), ... ,R(A+B-2)
     -- Return values from function call.
@@ -624,7 +776,7 @@ function VirtualMachine:executeClosure(params: table.PackTable<LuaValue>)
     -- Initialize a numeric for loop.
     elseif opcode == "FORPREP" then
       local init   = do_number(stack[a])
-      local plimit = do_number(stack[a + 1])
+      -- local plimit = do_number(stack[a + 1])
       local pstep  = do_number(stack[a + 2])
       -- if not tonumber(init) then
       --   error("Initial value must be a number")
@@ -651,7 +803,11 @@ function VirtualMachine:executeClosure(params: table.PackTable<LuaValue>)
 
       -- Call the iterator function.
       local iteratorFunc = stack[cb]
-      local returns = { iteratorFunc(stack[cb + 1], stack[cb + 2]) }
+      local returns = self:lua_call(iteratorFunc, {
+        n = 2,
+        stack[cb + 1],
+        stack[cb + 2],
+      })
 
       -- Place results on the stack, starting at cb.
       -- The number of results to keep is specified by `c`.
@@ -682,24 +838,24 @@ function VirtualMachine:executeClosure(params: table.PackTable<LuaValue>)
     -- Set a range of array elements in a table.
     elseif opcode == "SETLIST" then
       local targetTable = stack[a]
-      if type(targetTable) ~= "table" then
+      if targetTable is LuaTable then
+        local len = b
+        if len == USE_CURRENT_TOP then
+          len = top - a - 1
+        end
+
+        -- If C is 0, it indicates that the next instruction
+        -- contains the actual C value (not implemented here).
+        if c == 0 then
+          error("SETLIST with C=0 is not supported in this VM implementation")
+        end
+
+        local offset = (c - 1) * self._CONFIG.FIELDS_PER_FLUSH
+        for i = 1, len do
+          targetTable.values[offset + i] = stack[a + i]
+        end
+      else
         error("SETLIST target is not a table")
-      end
-
-      local len = b
-      if len == USE_CURRENT_TOP then
-        len = top - a - 1
-      end
-
-      -- If C is 0, it indicates that the next instruction
-      -- contains the actual C value (not implemented here).
-      if c == 0 then
-        error("SETLIST with C=0 is not supported in this VM implementation")
-      end
-
-      local offset = (c - 1) * self._CONFIG.FIELDS_PER_FLUSH
-      for i = 1, len do
-        targetTable[offset + i] = stack[a + i]
       end
 
     -- OP_VARARG [A]    close all variables in the stack up to (>=) R(A)
@@ -745,7 +901,7 @@ function VirtualMachine:executeClosure(params: table.PackTable<LuaValue>)
         end
       end
 
-      local tClosure = {
+      local tClosure: Closure = {
         nupvalues = #tProtoUpvalues,
         env       = nil,
         proto     = tProto,
@@ -771,13 +927,10 @@ function VirtualMachine:executeClosure(params: table.PackTable<LuaValue>)
       --  We don't have proper function identity tracking, and debug hooks are
       --  harder to implement. However, we gain a working VM in roughly 500 lines
       --  of code.
-      stack[a] = function(...)
-        self:setClosure(tClosure)
-        local nReturns, returns = pack(self:executeClosure(...))
-        self:setClosure(closure)
-
-        return unpack(returns, 1, nReturns)
-      end
+      stack[a] = {
+        kind = 'VmFunc',
+        closure = tClosure,
+      }
 
     -- OP_VARARG [A, B]    R(A), R(A+1), ..., R(A+B-1) = vararg
     -- Load vararg function arguments into registers.
@@ -801,14 +954,16 @@ function VirtualMachine:executeClosure(params: table.PackTable<LuaValue>)
   end
 end
 
-function VirtualMachine:execute()
+function VirtualMachine:execute(proto: Prototype): table.PackTable<LuaValue>
   -- Push main closure.
   self:setClosure({
     nupvalues = 0,
-    env       = _G,
-    proto     = self.mainProto,
+    env       = self.globalSetup._G,
+    proto     = proto,
     upvalues  = {},
   })
 
   return self:executeClosure({ n = 0 })
 end
+
+return VirtualMachine

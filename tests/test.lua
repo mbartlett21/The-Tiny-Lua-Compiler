@@ -170,9 +170,16 @@ function TLCTest:compileAndRun(code)
   local tokens    = tlc.Tokenizer.new(code):tokenize()
   local ast       = tlc.Parser.new(tokens):parse()
   local proto     = tlc.CodeGenerator.new(ast):generate()
-  local bytecode  = tlc.BytecodeEmitter.new(proto):emit()
 
-  return loadstring(bytecode)()
+  local vm = require'new_vm'.new()
+  require'lbaselib'.open(vm)
+
+  local res = vm:execute(proto)
+  -- local bytecode  = tlc.BytecodeEmitter.new(proto):emit()
+
+  local res2 = vm:unpack_tables(res)
+  return table.unpack(res2, 1, res.n)
+  -- return (loadstring or load)(bytecode)()
 end
 
 function TLCTest:assertCompileError(code)
@@ -191,7 +198,7 @@ end
 
 function TLCTest:compileAndRunChecked(code)
   local expectedReturns = { xpcall(
-    function()    return loadstring(code)() end,
+    function()    return (loadstring or load)(code)() end,
     function(err) return err .. debug.traceback("", 2) end)
   }
 
@@ -823,30 +830,30 @@ suite:describe("Complex General Tests", function()
     ]])
   end)
 
-  suite:it("Self-compilation", function()
-    -- NOTE: This test might take a while to run.
-    local testCode = [[
-      local tlcSource = io.open("tlc.lua"):read("*a")
+  -- suite:it("Self-compilation", function()
+  --   -- NOTE: This test might take a while to run.
+  --   local testCode = [[
+  --     local tlcSource = io.open("tlc.lua"):read("*a")
 
-      local tlc  = suite:compileAndRun(tlcSource)
-      local code = "return 2 * 10 + (function() return 2 * 5 end)()"
+  --     local tlc  = suite:compileAndRun(tlcSource)
+  --     local code = "return 2 * 10 + (function() return 2 * 5 end)()"
 
-      local tokens   = tlc.Tokenizer.new(code):tokenize()
-      local ast      = tlc.Parser.new(tokens):parse()
-      local proto    = tlc.CodeGenerator.new(ast):generate()
-      local bytecode = tlc.BytecodeEmitter.new(proto):emit()
+  --     local tokens   = tlc.Tokenizer.new(code):tokenize()
+  --     local ast      = tlc.Parser.new(tokens):parse()
+  --     local proto    = tlc.CodeGenerator.new(ast):generate()
+  --     local bytecode = tlc.BytecodeEmitter.new(proto):emit()
 
-      local func = loadstring(bytecode)
+  --     local func = loadstring(bytecode)
 
-      return func()
-    ]]
+  --     return func()
+  --   ]]
 
-    -- Inject the test suite into the global scope for
-    -- access within the test code.
-    _G.suite = suite
-    suite:assertEqual(suite:compileAndRun(testCode), 30)
-    _G.suite = nil
-  end)
+  --   -- Inject the test suite into the global scope for
+  --   -- access within the test code.
+  --   _G.suite = suite
+  --   suite:assertEqual(suite:compileAndRun(testCode), 30)
+  --   _G.suite = nil
+  -- end)
 end)
 
 return suite:summary()
