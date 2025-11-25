@@ -23,7 +23,7 @@ function lbaselib.ipairsaux(vm: VirtualMachine, args: table.PackTable<LuaValue>)
    local int = assert(math.tointeger(args[2]))
    local v2 = int + 1
    local tbl = args[1]
-   local val = vm:meta_gettable(tbl, v2)
+   local val = vm:lua_gettable(tbl, v2)
 
    if val then
       return {
@@ -62,9 +62,9 @@ function lbaselib.next(vm: VirtualMachine, args: table.PackTable<LuaValue>): tab
 end
 
 function lbaselib.pairs(vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
-   local meta = vm:meta_getmetafield(args[1], "__pairs")
+   local meta = vm:luaL_getmetafield(args[1], "__pairs")
    if meta then
-      return vm:meta_call(meta, { n = 1, args[1] })
+      return vm:lua_call(meta, { n = 1, args[1] })
    else
       return {
          n = 3,

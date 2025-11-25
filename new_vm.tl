@@ -72,7 +72,7 @@ local record VirtualMachine
   lua_call: function(self, a: LuaValue, b: table.PackTable<LuaValue>): table.PackTable<LuaValue>
   meta_tailcall: function(self, a: LuaValue, b: table.PackTable<LuaValue>): table.PackTable<LuaValue>
 
-  meta_getmetafield: function(self, a: LuaValue, field: string): LuaValue
+  luaL_getmetafield: function(self, a: LuaValue, field: string): LuaValue
 
   lua_newtable: function(self): LuaTable
   lua_newuserdata: function(self): LuaUdata
@@ -171,6 +171,7 @@ local type LuaExtFunc = VirtualMachine.LuaExtFunc
 local type LuaVmFunc = VirtualMachine.LuaVmFunc
 local type LuaTable = VirtualMachine.LuaTable
 local type LuaValue = VirtualMachine.LuaValue
+local type LuaUdata = VirtualMachine.LuaUdata
 
 local type UpValue = VirtualMachine.UpValue
 local type Closure = VirtualMachine.Closure
@@ -216,7 +217,7 @@ function VirtualMachine:setClosure(closure: Closure): Closure
   return closure
 end
 
-function VirtualMachine:meta_getmetafield(tbl: LuaValue, k: string): LuaValue
+function VirtualMachine:luaL_getmetafield(tbl: LuaValue, k: string): LuaValue
   if tbl and tbl is LuaTable then
     if tbl.metatable then
       return tbl.metatable.values[k]
