@@ -2,9 +2,10 @@
 
 
 for item in ./*.tl; do
-	if [[ "$item" != ./*.d.tl ]]; then
-		items="$items $item"
-	fi
+	case "$item" in
+		*.d.tl) ;;
+		*) items="$items $item" ;;
+	esac
 done
 
 echo "Generating $items"
