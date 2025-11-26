@@ -208,6 +208,25 @@ function lbaselib.type(_vm: VirtualMachine, args: table.PackTable<LuaValue>): ta
    end
 end
 
+function lbaselib.tostring(_vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
+   local v = args[1]
+   if v is LuaTable then
+      return { n = 1, "table <?>" }
+   elseif v is LuaVmFunc or v is LuaExtFunc or v is LuaExtFuncSimple then
+      return { n = 1, "function <?>" }
+   elseif v is number then
+      return { n = 1, tostring(v) }
+   elseif v is boolean then
+      return { n = 1, v and "true" or "false" }
+   elseif v is string then
+      return { n = 1, v }
+   elseif v is nil then
+      return { n = 1, "nil" }
+   else
+      error("invalid value: " .. tostring(v))
+   end
+end
+
 -- function lbaselib.loadfile(vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
 --    local s = vm:luaL_checklstring(1)
 --    local chunkname = vm:luaL_optstring(2)
@@ -230,6 +249,7 @@ function lbaselib.open(vm: VirtualMachine)
    globals.values.setmetatable = extfuncsimple(lbaselib.setmetatable)
    globals.values.unpack = extfuncsimple(lbaselib.unpack)
    globals.values.type = extfuncsimple(lbaselib.type)
+   globals.values.tostring = extfuncsimple(lbaselib.tostring)
    globals.values._G = globals
 
    vm.globalSetup.packages.values._G = globals

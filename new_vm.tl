@@ -268,6 +268,7 @@ end
 -- end
 
 function VirtualMachine:setClosure(closure: Closure): Closure
+  if closure == nil then self.closure = closure return nil end
   closure = {
     nupvalues = closure.nupvalues or 0,
     env       = closure.env or self.globalSetup._G,
@@ -474,7 +475,7 @@ function VirtualMachine:simple_concat(a: LuaValue, b: LuaValue): LuaValue
   else
     local meta = self:simple_luaL_getmetafield(a, "__concat") or self:simple_luaL_getmetafield(b, "__concat")
     if not meta then
-      self:lua_error("attempt to concat invalid values")
+      self:lua_error("attempt to concat invalid values: " .. tostring(a) .. ", " .. tostring(b))
     end
     local res = self:simple_call(meta, { n = 2, a, b })
     return res[1]
@@ -536,12 +537,13 @@ function VirtualMachine:simple_call(a: LuaValue, b: table.PackTable<LuaValue>): 
   if a is LuaVmFunc then
     -- can be simply executed.
     local currclosure = self.closure
+    assert(a.closure)
     self:setClosure(a.closure)
     local rets = self:executeClosure(b)
     self:setClosure(currclosure)
     return rets
   elseif a is LuaExtFuncSimple then
-    return assert(a.run(self, b))
+    return a.run(self, b)
   else
     local meta = self:simple_luaL_getmetafield(a, "__call")
     if meta then
@@ -583,11 +585,10 @@ function VirtualMachine:simple_newuserdata(): LuaUdata
   }
 end
 
-function VirtualMachine:simple_loadbuffer(buf: string, _name: string): LuaVmFunc
-  local tokens    = tlc.Tokenizer.new(buf):tokenize()
-  local ast       = tlc.Parser.new(tokens):parse()
-  local proto     = tlc.CodeGenerator.new(ast):generate()
-
+function VirtualMachine:simple_loadbuffer(buf: string, _name ?: string): LuaVmFunc
+  local tokens    = assert(tlc.Tokenizer.new(buf):tokenize())
+  local ast       = assert(tlc.Parser.new(tokens):parse())
+  local proto     = assert(tlc.CodeGenerator.new(ast):generate())
   local tClosure: Closure = {
     nupvalues = 0,
     env       = self.globalSetup._G,

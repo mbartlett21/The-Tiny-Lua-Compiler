@@ -836,19 +836,13 @@ suite:describe("Complex General Tests", function()
     local testCode = [[
       local tlcSource = io.open("the-tiny-lua-compiler.lua"):read("*a")
 
-      --local tlc  = suite:compileAndRun(tlcSource)
       local tlc = loadstring(tlcSource)()
       local code = "return 2 * 10 + (function() return 2 * 5 end)()"
 
       local tokens   = tlc.Tokenizer.new(code):tokenize()
       local ast      = tlc.Parser.new(tokens):parse()
       local proto    = tlc.CodeGenerator.new(ast):generate()
-      return tlc.VirtualMachine.new(proto):execute()[1]
-      --local bytecode = tlc.BytecodeEmitter.new(proto):emit()
-
-      --local func = loadstring(bytecode)
-
-      --return func()
+      return tlc.VirtualMachine.new(proto):execute()
     ]]
 
     -- Inject the test suite into the global scope for

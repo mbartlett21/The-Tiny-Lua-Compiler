@@ -208,6 +208,25 @@ function lbaselib.type(_vm, args)
    end
 end
 
+function lbaselib.tostring(_vm, args)
+   local v = args[1]
+   if VirtualMachine.is_table(v) then
+      return { n = 1, "table <?>" }
+   elseif VirtualMachine.is_vmfunc(v) or VirtualMachine.is_extfunc(v) or VirtualMachine.is_extfuncsimple(v) then
+      return { n = 1, "function <?>" }
+   elseif type(v) == "number" then
+      return { n = 1, tostring(v) }
+   elseif type(v) == "boolean" then
+      return { n = 1, v and "true" or "false" }
+   elseif type(v) == "string" then
+      return { n = 1, v }
+   elseif v == nil then
+      return { n = 1, "nil" }
+   else
+      error("invalid value: " .. tostring(v))
+   end
+end
+
 
 
 
@@ -230,6 +249,7 @@ function lbaselib.open(vm)
    globals.values.setmetatable = { kind = 'ExtFuncSimple', run = lbaselib.setmetatable }
    globals.values.unpack = { kind = 'ExtFuncSimple', run = lbaselib.unpack }
    globals.values.type = { kind = 'ExtFuncSimple', run = lbaselib.type }
+   globals.values.tostring = { kind = 'ExtFuncSimple', run = lbaselib.tostring }
    globals.values._G = globals
 
    vm.globalSetup.packages.values._G = globals
