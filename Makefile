@@ -6,5 +6,8 @@ build:
 clean:
 	echo cleaning
 
+run:
+	tl run ./lua.tl
+
 test:
 	tests/test.lua

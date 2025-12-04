@@ -4,6 +4,7 @@ local lbaselib = require'lbaselib'
 local lstrlib = require'lstrlib'
 local liolib = require'liolib'
 local ltablib = require'ltablib'
+local loslib = require'loslib'
 
 local record lualibs
 	open: function(vm: VirtualMachine)
@@ -14,6 +15,7 @@ function lualibs.open(vm: VirtualMachine)
 	lstrlib.open(vm)
 	liolib.open(vm)
 	ltablib.open(vm)
+	loslib.open(vm)
 
    vm:simple_call(assert(vm:simple_loadbuffer [[
 for _, item in ipairs { 'table', 'string', 'io', '_G' } do

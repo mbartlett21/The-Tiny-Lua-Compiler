@@ -1,5 +1,10 @@
 local VirtualMachine = require'new_vm'
 
+local lpats = require'mjb_lpatterns'
+
+local compile_pat = lpats.compile_pat
+local matchestv = lpats.matchestv
+
 -- local type LuaExtFunc = VirtualMachine.LuaExtFunc
 local type LuaExtFuncSimple = VirtualMachine.LuaExtFuncSimple
 -- local type LuaVmFunc = VirtualMachine.LuaVmFunc
@@ -42,7 +47,7 @@ function lstrlib.gmatch(_vm: VirtualMachine, args: table.PackTable<LuaValue>): t
    local str = tostring(args[1])
    local pat = tostring(args[2])
    local init = args.n >= 3 and math.tointeger(args[3]) or 1
-   local fn = string.gmatch(str, pat, init)
+   local fn = lpats.gmatch(str, pat, init)
    return {
       n = 1,
       extfuncsimple(function(_vm: VirtualMachine, _inner: table.PackTable<LuaValue>): table.PackTable<LuaValue>
@@ -52,23 +57,34 @@ function lstrlib.gmatch(_vm: VirtualMachine, args: table.PackTable<LuaValue>): t
 end
 
 function lstrlib.match(_vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
-   -- we return a simple closure
    local str = tostring(args[1])
    local pat = tostring(args[2])
    local init = args.n >= 3 and math.tointeger(args[3]) or 1
-   return table.pack(string.match(str, pat, init))
+   return table.pack(lpats.match(str, pat, init))
+end
+
+function lstrlib.find(_vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
+   local str = tostring(args[1])
+   local pat = tostring(args[2])
+   local init = args.n >= 3 and math.tointeger(args[3]) or 1
+   local plain = args[4] and true or false
+   return table.pack(lpats.find(str, pat, init, plain))
 end
 
 function lstrlib.sub(_vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
-   -- we return a simple closure
    local str = tostring(args[1])
    local st = math.tointeger(args[2] or 1)
    local ed = math.tointeger(args[3] or -1)
    return table.pack(string.sub(str, st, ed))
 end
 
+function lstrlib.rep(_vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
+   local str = tostring(args[1])
+   local n = assert(math.tointeger(args[2]))
+   return { n = 1, string.rep(str, n) }
+end
+
 function lstrlib.char(_vm: VirtualMachine, args: table.PackTable<LuaValue>): table.PackTable<LuaValue>
-   -- we return a simple closure
    local ints: table.PackTable<integer> = { n = args.n }
    for i = 1, args.n do
       ints[i] = math.tointeger(args[i])
@@ -84,6 +100,8 @@ function lstrlib.open(vm: VirtualMachine)
    string2.values.match = extfuncsimple(lstrlib.match)
    string2.values.char = extfuncsimple(lstrlib.char)
    string2.values.sub = extfuncsimple(lstrlib.sub)
+   string2.values.find = extfuncsimple(lstrlib.find)
+   string2.values.rep = extfuncsimple(lstrlib.rep)
 
    local meta_tbl = vm:simple_newtable()
    meta_tbl.values.__index = string2

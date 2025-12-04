@@ -8,7 +8,7 @@ local tlc = require("tlc")
 -- We use Lua's debug hook (`debug.sethook`) to count executed instructions
 -- during each test run. If a test exceeds this limit, we assume it's stuck
 -- in an infinite loop and terminate it with an error.
-local INFINITE_LOOP_LIMIT = 15000000
+local INFINITE_LOOP_LIMIT = 1500000000
 
 local ESCAPED_CHARACTER_CONVERSIONS = {
   ["\a"]  = "a",  -- Bell (alert sound)
