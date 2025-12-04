@@ -98,12 +98,6 @@ local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 th
 
 
 
-
-
-
-
-
-
 lpats._DEBUG = nil
 
 
@@ -598,7 +592,6 @@ local function compile_pat(pat)
    if string_sub(pat, 1, 1) == '^' then
 
       i = i + 1
-      instrs.prepatlast = -1
    else
 
 
@@ -611,7 +604,6 @@ local function compile_pat(pat)
       table_insert(instrs, { ty = 'split', x = l3idx, y = l2idx })
       table_insert(instrs, { ty = 'any' })
       table_insert(instrs, { ty = 'jmp', pc = l1idx })
-      instrs.prepatlast = #instrs
    end
 
 
@@ -764,7 +756,6 @@ local function compile_pat(pat)
 
    table_insert(instrs, { ty = 'save', index = 2 })
 
-   instrs.endpatstart = #instrs + 1
    if i == #pat then
       assert(string_sub(pat, i, i) == '$')
       table_insert(instrs, { ty = 'match' })
@@ -776,15 +767,9 @@ local function compile_pat(pat)
       local l1idx = #instrs + 1
       local l2idx = l1idx + 1
       local l3idx = l2idx + 2
-      table_insert(instrs, { ty = 'split', x = l2idx, y = l3idx })
+      table_insert(instrs, { ty = 'split', x = l3idx, y = l2idx })
       table_insert(instrs, { ty = 'any' })
       table_insert(instrs, { ty = 'jmp', pc = l1idx })
-
-
-
-
-
-
 
 
 
@@ -931,7 +916,7 @@ local function matchestv(str, pat, start)
    end
 
    if lpats._DEBUG then
-
+      print(string.format('matchestv: %q, %q', (#str > 1000 and (str:sub(1, 500) .. "..." .. str:sub(-500)) or str), tostring(pat)))
 
       require('pprint')(instrs)
    end
@@ -948,11 +933,10 @@ local function matchestv(str, pat, start)
 
 
 
-
    local clist = { n = 0, sp = start or 1 }
    local nlist = {}
 
-   local function addthread(list, sp, pc, sc, saved, wasin)
+   local function addthread(list, sp, pc, sc, saved)
 
       ::start::
       for i = 1, list.n do
@@ -986,7 +970,7 @@ local function matchestv(str, pat, start)
          pc = inst.pc
          goto start
       elseif inst.ty == 'split' then
-         addthread(list, sp, inst.x, sc, saved, wasin)
+         addthread(list, sp, inst.x, sc, saved)
          pc = inst.y
          goto start
       elseif inst.ty == 'save' then
@@ -1041,16 +1025,14 @@ local function matchestv(str, pat, start)
          else
             list[n] = { pc = pc, sc = sc, saved = saved }
          end
-         list.hadinpat = list.hadinpat or wasin
       end
    end
 
-   addthread(clist, clist.sp, 1, 0, {}, true)
+   addthread(clist, clist.sp, 1, 0, {})
 
    for sp = start or 1, #str + 1 do
       nlist.sp = clist.sp + 1
       nlist.n = 0
-      nlist.hadinpat = false
 
       if lpats._DEBUG then
          print('sp = ' .. sp)
@@ -1070,8 +1052,6 @@ local function matchestv(str, pat, start)
          local pc = th.pc
          local inst = assert(instrs[pc])
 
-         local isinpat = pc > instrs.prepatlast and pc < instrs.endpatstart
-
 
 
 
@@ -1090,15 +1070,15 @@ local function matchestv(str, pat, start)
 
          if inst.ty == 'char' then
             if c == inst.c then
-               addthread(nlist, sp + 1, pc + 1, th.sc, th.saved, isinpat)
+               addthread(nlist, sp + 1, pc + 1, th.sc, th.saved)
             end
          elseif inst.ty == 'pat' then
             if string_find(c, inst.pat) then
-               addthread(nlist, sp + 1, pc + 1, th.sc, th.saved, isinpat)
+               addthread(nlist, sp + 1, pc + 1, th.sc, th.saved)
             end
          elseif inst.ty == 'any' then
             if c ~= '' then
-               addthread(nlist, sp + 1, pc + 1, th.sc, th.saved, isinpat)
+               addthread(nlist, sp + 1, pc + 1, th.sc, th.saved)
             end
          elseif inst.ty == 'match' then
 
@@ -1106,18 +1086,17 @@ local function matchestv(str, pat, start)
                return th.saved
             elseif inst.anywhere then
 
-
-               if not clist.hadinpat then
+               if i == 1 then
                   return th.saved
                end
             end
          elseif inst.ty == 'inc' then
             if c == inst.c then
-               addthread(nlist, sp + 1, pc + 1, th.sc + 1, th.saved, isinpat)
+               addthread(nlist, sp + 1, pc + 1, th.sc + 1, th.saved)
             end
          elseif inst.ty == 'dec' then
             if c == inst.c and th.sc > 0 then
-               addthread(nlist, sp + 1, pc + 1, th.sc - 1, th.saved, isinpat)
+               addthread(nlist, sp + 1, pc + 1, th.sc - 1, th.saved)
             end
          elseif inst.ty == 'deccap' then
             assert(th.sc ~= 0)
@@ -1126,7 +1105,7 @@ local function matchestv(str, pat, start)
             assert(capc ~= '')
             if c == capc then
 
-               addthread(nlist, sp + 1, pc + 1, th.sc - 1, th.saved, isinpat)
+               addthread(nlist, sp + 1, pc + 1, th.sc - 1, th.saved)
             end
          else
 
