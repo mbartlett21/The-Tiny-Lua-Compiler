@@ -85,12 +85,6 @@ local record lpats
         is {Instr}
 
         has_backreference: boolean
-
-        -- the last index of pre-pattern
-        prepatlast: integer
-
-        -- the first index of end-pattern
-        endpatstart: integer
     end
 
     compile_pat: function(string): Instrs
@@ -598,7 +592,6 @@ local function compile_pat(pat: string): Instrs
     if string_sub(pat, 1, 1) == '^' then
         -- nothing special
         i = i + 1
-        instrs.prepatlast = -1
     else
         -- not anchored. Add equivalent of .-
         -- L1: split L3, L2
@@ -611,7 +604,6 @@ local function compile_pat(pat: string): Instrs
         table_insert(instrs, { ty = 'split', x = l3idx, y = l2idx })
         table_insert(instrs, { ty = 'any' })
         table_insert(instrs, { ty = 'jmp', pc = l1idx })
-        instrs.prepatlast = #instrs
     end
 
     -- save the start location
@@ -764,35 +756,28 @@ local function compile_pat(pat: string): Instrs
     -- save the end location
     table_insert(instrs, { ty = 'save', index = 2 })
 
-    instrs.endpatstart = #instrs + 1
     if i == #pat then -- end was $
         assert(string_sub(pat, i, i) == '$')
         table_insert(instrs, { ty = 'match' })
-    else -- end wasn't that. we add the equivalent of .* on the end
-        -- L1: split L2, L3
+    else -- end wasn't that. we add the equivalent of .- on the end
+        -- L1: split L3, L2
         -- L2: any
         --     jmp L1
         -- L3:
         local l1idx = #instrs + 1
         local l2idx = l1idx + 1
         local l3idx = l2idx + 2
-        table_insert(instrs, { ty = 'split', x = l2idx, y = l3idx })
+        table_insert(instrs, { ty = 'split', x = l3idx, y = l2idx })
         table_insert(instrs, { ty = 'any' })
         table_insert(instrs, { ty = 'jmp', pc = l1idx })
+
         -- allowing it anywhere is an optimisation for long strings
         --
-        -- In the Thompson Pike VM, this does have to have some special casing, so that it
-        -- doesn't end early.
-        --
-        -- the special case is this:
-        --
-        -- If there is a thread at the match instruction, and it is marked as 'anywhere',
-        -- the search can be ended iff all the threads that survived to the current turn
-        -- were either before or after the main pattern last turn.
-        -- (I.e. All the threads that come before the main pattern have no chance at catching up,
-        -- since we already have had a match that will be chosen over them.)
-        -- If there is still a thread in the middle of the main pattern, this won't necessarily
-        -- work, particularly for greedy matching.
+        -- In the Thompson Pike VM, we can let it end early as long as there
+        -- aren't any threads with higher priority.
+        -- The split above has to be ordered that way so that the match has
+        -- higher priority than scanning the rest of the string when we don't
+        -- need to.
         table_insert(instrs, { ty = 'match', anywhere = true })
     end
 
@@ -858,7 +843,7 @@ local function matchesrb(str: string, pat: string | Instrs, start: integer): {in
             end
         elseif inst is MatchInstr then
             -- assert that we are at the end
-            -- TODO: see what anywhere does
+            -- TODO: or inst.anywhere
             return c == ''
         elseif inst is JmpInstr then
             return recursive(inst.pc, sp, sc)
@@ -931,7 +916,7 @@ local function matchestv(str: string, pat: string | Instrs, start: integer): {in
     end
 
     if lpats._DEBUG then
-        -- print('matchestv', str, pat)
+        print(string.format('matchestv: %q, %q', (#str > 1000 and (str:sub(1,500).."..."..str:sub(-500)) or str), tostring(pat)))
 
         require'pprint'(instrs)
     end
@@ -946,13 +931,12 @@ local function matchestv(str: string, pat: string | Instrs, start: integer): {in
         is {ListV}
         n: integer
         sp: integer
-        hadinpat: boolean
     end
 
     local clist: List = { n = 0, sp = start or 1 }
     local nlist: List = { }
 
-    local function addthread(list: List, sp: integer, pc: integer, sc: integer, saved: {integer:integer}, wasin: boolean)
+    local function addthread(list: List, sp: integer, pc: integer, sc: integer, saved: {integer:integer})
         -- assert(list.sp == sp)
         ::start::
         for i = 1, list.n do
@@ -986,7 +970,7 @@ local function matchestv(str: string, pat: string | Instrs, start: integer): {in
             pc = inst.pc
             goto start
         elseif inst is SplitInstr then
-            addthread(list, sp, inst.x, sc, saved, wasin) -- add to the current list
+            addthread(list, sp, inst.x, sc, saved) -- add to the current list
             pc = inst.y
             goto start
         elseif inst is SaveInstr then
@@ -1041,16 +1025,14 @@ local function matchestv(str: string, pat: string | Instrs, start: integer): {in
             else
                 list[n] = { pc = pc, sc = sc, saved = saved }
             end
-            list.hadinpat = list.hadinpat or wasin
         end
     end
 
-    addthread(clist, clist.sp, 1, 0, {}, true)
+    addthread(clist, clist.sp, 1, 0, {})
 
     for sp = start or 1, #str + 1 do
         nlist.sp = clist.sp + 1
         nlist.n = 0
-        nlist.hadinpat = false
 
         if lpats._DEBUG then
             print('sp = ' .. sp)
@@ -1070,8 +1052,6 @@ local function matchestv(str: string, pat: string | Instrs, start: integer): {in
             local pc = th.pc
             local inst = assert(instrs[pc])
 
-            local isinpat = pc > instrs.prepatlast and pc < instrs.endpatstart
-
             -- instructions:
             -- { ty = 'char', c = char }            -- assert(curr == inst.c); pc ++; sp ++
             -- { ty = 'frontier', pat = str }       -- assert(string.match(curr, inst.pat) and not string.match(prev, inst.pat)); pc ++; sp ++; start and end are treated as '\0'
@@ -1090,34 +1070,33 @@ local function matchestv(str: string, pat: string | Instrs, start: integer): {in
             -- { ty = 'deccap', cap = int }         -- bugif(depth == 0) assert(captures[cap]:sub(#cap-depth) = char); depth -= 1; sp ++
             if inst is CharInstr then
                 if c == inst.c then -- keep going in the next iter
-                    addthread(nlist, sp + 1, pc + 1, th.sc, th.saved, isinpat) -- do what the sp will be in the next iter
+                    addthread(nlist, sp + 1, pc + 1, th.sc, th.saved) -- do what the sp will be in the next iter
                 end
             elseif inst is PatInstr then
                 if string_find(c, inst.pat) then
-                    addthread(nlist, sp + 1, pc + 1, th.sc, th.saved, isinpat) -- do what the sp will be in the next iter
+                    addthread(nlist, sp + 1, pc + 1, th.sc, th.saved) -- do what the sp will be in the next iter
                 end
             elseif inst is AnyInstr then
                 if c ~= '' then
-                    addthread(nlist, sp + 1, pc + 1, th.sc, th.saved, isinpat) -- do what the sp will be in the next iter
+                    addthread(nlist, sp + 1, pc + 1, th.sc, th.saved) -- do what the sp will be in the next iter
                 end
             elseif inst is MatchInstr then
                 -- assert that we are at the end of the string
                 if c == '' then
                     return th.saved
                 elseif inst.anywhere then
-                    -- we can end early if all the threads that were in-pattern died last turn.
-                    -- this state can't be calculated based on the current locations since we can't tell where the threads came from.
-                    if not clist.hadinpat then
+                    -- we can end early as long as there aren't any threads with a higher priority
+                    if i == 1 then
                         return th.saved
                     end
                 end
             elseif inst is IncInstr then
                 if c == inst.c then
-                    addthread(nlist, sp + 1, pc + 1, th.sc + 1, th.saved, isinpat)
+                    addthread(nlist, sp + 1, pc + 1, th.sc + 1, th.saved)
                 end
             elseif inst is DecInstr then
                 if c == inst.c and th.sc > 0 then
-                    addthread(nlist, sp + 1, pc + 1, th.sc - 1, th.saved, isinpat)
+                    addthread(nlist, sp + 1, pc + 1, th.sc - 1, th.saved)
                 end
             elseif inst is DeccapInstr then
                 assert(th.sc ~= 0)
@@ -1126,7 +1105,7 @@ local function matchestv(str: string, pat: string | Instrs, start: integer): {in
                 assert(capc ~= '')
                 if c == capc then
                     -- continue
-                    addthread(nlist, sp + 1, pc + 1, th.sc - 1, th.saved, isinpat)
+                    addthread(nlist, sp + 1, pc + 1, th.sc - 1, th.saved)
                 end
             else
                 -- jmp, save and split are handled by addthread
