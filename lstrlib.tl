@@ -2,8 +2,8 @@ local VirtualMachine = require'new_vm'
 
 local lpats = require'mjb_lpatterns'
 
-local compile_pat = lpats.compile_pat
-local matchestv = lpats.matchestv
+-- local compile_pat = lpats.compile_pat
+-- local matchestv = lpats.matchestv
 
 -- local type LuaExtFunc = VirtualMachine.LuaExtFunc
 local type LuaExtFuncSimple = VirtualMachine.LuaExtFuncSimple

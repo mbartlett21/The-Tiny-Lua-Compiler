@@ -26,6 +26,11 @@ local record lpats
         pat: string
     end
 
+    enum AnyTy 'any' end
+    interface AnyInstr where self.ty == 'any'
+        ty: AnyTy
+    end
+
     enum JmpTy 'jmp' end
     interface JmpInstr where self.ty == 'jmp'
         ty: JmpTy
@@ -73,7 +78,7 @@ local record lpats
         ty: MatchTy
     end
 
-    type Instr = CharInstr | FrontierInstr | SplitInstr | PatInstr | JmpInstr | JmpneInstr | IncInstr | DecInstr | SetcapInstr | DeccapInstr | SaveInstr | MatchInstr
+    type Instr = CharInstr | FrontierInstr | SplitInstr | PatInstr | AnyInstr | JmpInstr | JmpneInstr | IncInstr | DecInstr | SetcapInstr | DeccapInstr | SaveInstr | MatchInstr
 
     interface Instrs
         is {Instr}
@@ -100,6 +105,7 @@ local type CharInstr     = lpats.CharInstr
 local type FrontierInstr = lpats.FrontierInstr
 local type SplitInstr    = lpats.SplitInstr
 local type PatInstr      = lpats.PatInstr
+local type AnyInstr      = lpats.AnyInstr
 local type JmpInstr      = lpats.JmpInstr
 local type JmpneInstr    = lpats.JmpneInstr
 local type IncInstr      = lpats.IncInstr
@@ -113,6 +119,7 @@ local type MatchInstr    = lpats.MatchInstr
 local string_find = string.find
 
 local pairs = pairs
+local assert = assert
 local string_sub = string.sub
 local table_insert = table.insert
 local table_concat = table.concat
@@ -145,7 +152,9 @@ end
 
 local function encode_char(instrs: Instrs, c: string)
     local cs = string_sub(c, 1, 2)
-    if c ~= '.' and #c == 1 then
+    if c == '.' then
+        table.insert(instrs, { ty = 'any' })
+    elseif c ~= '.' and #c == 1 then
         table_insert(instrs, { ty = 'char', c = c })
     elseif cs == '%f' then
         local pat = '^' .. string_sub(c, 3) .. '$' --> ^[whatever]$
@@ -554,6 +563,7 @@ s3: save    2
 -- { ty = 'char', c = char }            -- assert(curr == inst.c); pc ++; sp ++
 -- { ty = 'frontier', pat = str }       -- assert(string.match(curr, inst.pat) and not string.match(prev, inst.pat)); pc ++; sp ++; start and end are treated as '\0'
 -- { ty = 'pat', pat = str }            -- assert(string.match(curr, inst.pat)); pc ++; sp ++
+-- { ty = 'any' }                       -- assert(curr != ''); pc ++; sp ++
 -- { ty = 'match' }                     -- stop this thread. we have a match.
 -- { ty = 'jmp', pc = int }             -- pc = inst.pc
 -- { ty = 'split', x = int, y = int }   -- split execution to PC x and PC y (with the same string pointer). Prefer x
@@ -567,7 +577,9 @@ s3: save    2
 -- { ty = 'deccap', cap = int }         -- bugif(depth == 0) assert(captures[cap]:sub(#cap-depth) = char); depth -= 1; sp ++
 
 -- takes normal pattern syntax
+-- local patcache: {string:Instrs} = {} -- setmetatable({}, {__mode="v"})
 local function compile_pat(pat: string): Instrs
+    -- if patcache[pat] then return patcache[pat] end
     local groups = {}
     local groupn = 3 -- current group index. unrelated to #groups
 
@@ -582,14 +594,14 @@ local function compile_pat(pat: string): Instrs
     else
         -- not anchored. Add equivalent of .-
         -- L1: split L3, L2
-        -- L2: char c
+        -- L2: any
         --     jmp L1
         -- L3:
         local l1idx = #instrs + 1
         local l2idx = l1idx + 1
         local l3idx = l2idx + 2
         table_insert(instrs, { ty = 'split', x = l3idx, y = l2idx })
-        table_insert(instrs, { ty = 'pat', pat = '^.$' }) -- match any
+        table_insert(instrs, { ty = 'any' })
         table_insert(instrs, { ty = 'jmp', pc = l1idx })
     end
 
@@ -747,19 +759,20 @@ local function compile_pat(pat: string): Instrs
         assert(string_sub(pat, i, i) == '$')
     else -- end wasn't that. we add the equivalent of .* on the end
         -- L1: split L2, L3
-        -- L2: char c
+        -- L2: any
         --     jmp L1
         -- L3:
         local l1idx = #instrs + 1
         local l2idx = l1idx + 1
         local l3idx = l2idx + 2
         table_insert(instrs, { ty = 'split', x = l2idx, y = l3idx })
-        table_insert(instrs, { ty = 'pat', pat = '^.$' }) -- match any
+        table_insert(instrs, { ty = 'any' })
         table_insert(instrs, { ty = 'jmp', pc = l1idx })
     end
 
     table_insert(instrs, { ty = 'match' })
 
+    -- patcache[pat] = instrs
     return instrs
 end
 
@@ -788,6 +801,7 @@ local function matchesrb(str: string, pat: string | Instrs, start: integer): {in
         -- { ty = 'char', c = char }            -- assert(curr == inst.c); pc ++; sp ++
         -- { ty = 'frontier', pat = str }       -- assert(string.match(curr, inst.pat) and not string.match(prev, inst.pat)); pc ++; sp ++; start and end are treated as '\0'
         -- { ty = 'pat', pat = str }            -- assert(string.match(curr, inst.pat)); pc ++; sp ++
+        -- { ty = 'any' }                       -- assert(curr != ''); pc ++; sp ++
         -- { ty = 'match' }                     -- stop this thread. we have a match.
         -- { ty = 'jmp', pc = int }             -- pc = inst.pc
         -- { ty = 'split', x = int, y = int }   -- split execution to PC x and PC y (with the same string pointer). Prefer x
@@ -804,6 +818,9 @@ local function matchesrb(str: string, pat: string | Instrs, start: integer): {in
             return recursive(pc + 1, sp + 1, sc)
         elseif inst is PatInstr then
             if not string_find(c, inst.pat) then return false end
+            return recursive(pc + 1, sp + 1, sc)
+        elseif inst is AnyInstr then
+            if c == '' then return false end
             return recursive(pc + 1, sp + 1, sc)
         elseif inst is FrontierInstr then
             local prev = string_sub(str, sp - 1, sp - 1)
@@ -889,7 +906,7 @@ local function matchestv(str: string, pat: string | Instrs, start: integer): {in
     end
 
     if lpats._DEBUG then
-        print('matchestv', str, pat)
+        -- print('matchestv', str, pat)
 
         require'pprint'(instrs)
     end
@@ -903,16 +920,25 @@ local function matchestv(str: string, pat: string | Instrs, start: integer): {in
     local interface List
         is {ListV}
         n: integer
+        sp: integer
+        items_by_pc: {integer:{ListV}}
     end
 
-    local clist: List = { n = 0 }
-    local nlist: List = { n = 0 }
+    local clist: List = { n = 0, sp = start or 1, items_by_pc = {} }
+    local nlist: List = { items_by_pc = {} }
+
+    local empty: {ListV} = {}
 
     local function addthread(list: List, sp: integer, pc: integer, sc: integer, saved: {integer:integer})
+        -- assert(list.sp == sp)
         ::start::
-        for i = 1, list.n do
-            local li = list[i]
-            if li.pc == pc and li.sc == sc then
+        local ibp = list.items_by_pc
+        local items_pc = ibp[pc] or empty
+        for i = 1, #items_pc do
+            local li = items_pc[i]
+        -- for i = 1, list.n do
+        --     local li = list[i]
+            if li.sc == sc then
                 if not instrs.has_backreference then
                     return
                 end
@@ -996,12 +1022,22 @@ local function matchestv(str: string, pat: string | Instrs, start: integer): {in
             else
                 list[n] = { pc = pc, sc = sc, saved = saved }
             end
+            local it = ibp[pc]
+            if not it then
+                it = {}
+                ibp[pc] = it
+            end
+            table_insert(it, list[n])
         end
     end
 
-    addthread(clist, start or 1, 1, 0, {})
+    addthread(clist, clist.sp, 1, 0, {})
 
     for sp = start or 1, #str + 1 do
+        nlist.sp = clist.sp + 1
+        nlist.n = 0
+        for k in pairs(nlist.items_by_pc) do nlist.items_by_pc[k] = nil end
+
         if lpats._DEBUG then
             print('sp = ' .. sp)
             print('#threads = ' .. clist.n)
@@ -1024,6 +1060,7 @@ local function matchestv(str: string, pat: string | Instrs, start: integer): {in
             -- { ty = 'char', c = char }            -- assert(curr == inst.c); pc ++; sp ++
             -- { ty = 'frontier', pat = str }       -- assert(string.match(curr, inst.pat) and not string.match(prev, inst.pat)); pc ++; sp ++; start and end are treated as '\0'
             -- { ty = 'pat', pat = str }            -- assert(string.match(curr, inst.pat)); pc ++; sp ++
+            -- { ty = 'any' }                       -- assert(curr != ''); pc ++; sp ++
             -- { ty = 'match' }                     -- stop this thread. we have a match.
             -- { ty = 'jmp', pc = int }             -- pc = inst.pc
             -- { ty = 'split', x = int, y = int }   -- split execution to PC x and PC y (with the same string pointer). Prefer x
@@ -1041,6 +1078,10 @@ local function matchestv(str: string, pat: string | Instrs, start: integer): {in
                 end
             elseif inst is PatInstr then
                 if string_find(c, inst.pat) then
+                    addthread(nlist, sp + 1, pc + 1, th.sc, th.saved) -- do what the sp will be in the next iter
+                end
+            elseif inst is AnyInstr then
+                if c ~= '' then
                     addthread(nlist, sp + 1, pc + 1, th.sc, th.saved) -- do what the sp will be in the next iter
                 end
             elseif inst is MatchInstr then
@@ -1072,8 +1113,9 @@ local function matchestv(str: string, pat: string | Instrs, start: integer): {in
             i = i + 1
         end
 
+        if clist.n == 0 then break end -- nothing matched
+
         clist, nlist = nlist, clist
-        nlist.n = 0
     end
 
     return
@@ -1136,10 +1178,12 @@ lpats.gmatch = function(s: string, pat: string, init ?: integer): function(): (s
 
     local olen = #s
 
+    local patc = compile_pat(pat)
+
     local emptyallowed = true
     local function iter(): ((string|integer)...)
         if init > olen + 1 then return nil end
-        local results = matchestv(s, pat, init)
+        local results = matchestv(s, patc, init)
 
         if not results then
             return nil
@@ -1249,11 +1293,13 @@ lpats.gsub = function(s: string, pat: string,
 
     local numdone = 0
 
+    local patc = compile_pat(pat)
+
     while init <= olen + 1 do
         local results: {integer:integer}
 
         if n > numdone then
-            results = matchestv(s, pat, init)
+            results = matchestv(s, patc, init)
         end
 
         if not results then
