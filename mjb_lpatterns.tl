@@ -921,24 +921,17 @@ local function matchestv(str: string, pat: string | Instrs, start: integer): {in
         is {ListV}
         n: integer
         sp: integer
-        items_by_pc: {integer:{ListV}}
     end
 
-    local clist: List = { n = 0, sp = start or 1, items_by_pc = {} }
-    local nlist: List = { items_by_pc = {} }
-
-    local empty: {ListV} = {}
+    local clist: List = { n = 0, sp = start or 1 }
+    local nlist: List = { }
 
     local function addthread(list: List, sp: integer, pc: integer, sc: integer, saved: {integer:integer})
         -- assert(list.sp == sp)
         ::start::
-        local ibp = list.items_by_pc
-        local items_pc = ibp[pc] or empty
-        for i = 1, #items_pc do
-            local li = items_pc[i]
-        -- for i = 1, list.n do
-        --     local li = list[i]
-            if li.sc == sc then
+        for i = 1, list.n do
+            local li = list[i]
+            if li.pc == pc and li.sc == sc then
                 if not instrs.has_backreference then
                     return
                 end
@@ -1022,12 +1015,6 @@ local function matchestv(str: string, pat: string | Instrs, start: integer): {in
             else
                 list[n] = { pc = pc, sc = sc, saved = saved }
             end
-            local it = ibp[pc]
-            if not it then
-                it = {}
-                ibp[pc] = it
-            end
-            table_insert(it, list[n])
         end
     end
 
@@ -1036,7 +1023,6 @@ local function matchestv(str: string, pat: string | Instrs, start: integer): {in
     for sp = start or 1, #str + 1 do
         nlist.sp = clist.sp + 1
         nlist.n = 0
-        for k in pairs(nlist.items_by_pc) do nlist.items_by_pc[k] = nil end
 
         if lpats._DEBUG then
             print('sp = ' .. sp)
