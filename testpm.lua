@@ -52,19 +52,19 @@ do
   local type = type
 
   string.gsub = function(s, pat, repl, n)
-    -- if type(repl) == 'function' then
-    --   return string_gsub(s, pat, repl, n)
-    -- end
+    if type(repl) == 'function' then
+      return string_gsub(s, pat, repl, n)
+    end
     cgsub = cgsub + 1
-    -- local s1 = os.clock()
-    -- local r1 = { ostring_gsub(s, pat, repl, n) }
+    local s1 = os.clock()
+    local r1 = { ostring_gsub(s, pat, repl, n) }
     local s2 = os.clock()
-    if pat == "[a-z%d]" then lpats._DEBUG = 2 end
+    -- if pat == "[a-z%d]" then lpats._DEBUG = 2 end
     local r2 = { string_gsub(s, pat, repl, n) }
-    lpats._DEBUG=nil
+    -- lpats._DEBUG=nil
     local s3 = os.clock()
 
-    -- ogsub = ogsub + (s2 - s1)
+    ogsub = ogsub + (s2 - s1)
     ngsub = ngsub + (s3 - s2)
 
     if (s3 - s2) > 0.01 then
@@ -72,11 +72,11 @@ do
       print(s3 - s2, string.format('%q, %q', s, pat), type(repl))
     end
 
-    -- for i = 1, math.max(#r1, #r2) do
-    --   if r1[i] ~= r2[i] then
-    --     error('difference in results[' .. i .. ']:\n' .. r1[i] .. '\n' .. r2[i])
-    --   end
-    -- end
+    for i = 1, math.max(#r1, #r2) do
+      if r1[i] ~= r2[i] then
+        error('difference in results[' .. i .. ']:\n' .. r1[i] .. '\n' .. r2[i])
+      end
+    end
 
     return table.unpack(r2)
   end
